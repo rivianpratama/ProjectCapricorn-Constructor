@@ -1,4 +1,4 @@
-import { complete, HttpError, keyFrom, MODELS } from '../../../src/lib/openrouter';
+import { complete, HttpError, keyFrom, modelsFrom } from '../../../src/lib/openrouter';
 import { prompt } from '../../../src/lib/prompts';
 import { parseEngram } from '../../../src/lib/schema/engram';
 
@@ -12,6 +12,7 @@ interface Body {
 export async function POST(request: Request): Promise<Response> {
   try {
     const key = keyFrom(request);
+    const models = modelsFrom(request);
     const body = (await request.json()) as Body;
     if (!body?.engrams?.length) throw new HttpError(400, 'no chunk engrams');
 
@@ -24,7 +25,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const markdown = await complete({
       key,
-      model: MODELS.cheap,
+      model: models.cheap,
       messages: [
         { role: 'system', content: prompt('phase1-merge') },
         { role: 'user', content: user },

@@ -1,4 +1,4 @@
-import { complete, HttpError, keyFrom, MODELS, parseJson } from '../../../src/lib/openrouter';
+import { complete, HttpError, keyFrom, modelsFrom, type Models, parseJson } from '../../../src/lib/openrouter';
 import { webSystemPrompt } from '../../../src/lib/fidelity/irisesweb';
 import { buildTail } from '../../../src/lib/fidelity/tail';
 import { realIsFirst, scoreLikeness, scoreParroting, verdict, type LikenessJudgement } from '../../../src/lib/fidelity/score';
@@ -18,20 +18,21 @@ interface Body {
 export async function POST(request: Request): Promise<Response> {
   try {
     const key = keyFrom(request);
+    const models = modelsFrom(request);
     const body = (await request.json()) as Body;
     const pairs = (body.pairs ?? []).slice(0, 20);
     if (!pairs.length) throw new HttpError(400, 'no held-out pairs');
 
     const system = webSystemPrompt(body.files ?? {});
-    const generated = await generate(key, system, body.files ?? {}, pairs);
+    const generated = await generate(key, models, system, body.files ?? {}, pairs);
 
-    const judgements = await judgePairs(key, pairs, generated, body.removedTraits ?? []);
+    const judgements = await judgePairs(key, models, pairs, generated, body.removedTraits ?? []);
     const likeness = scoreLikeness(
       pairs.map(pair => ({ stimulus: pair.stimulus, real: pair.reply, generated: [] })),
       judgements,
     );
     const parroting = scoreParroting(generated, body.subjectMessages ?? []);
-    const generalisation = await judgeSketches(key, body.drives ?? [], body.sketches ?? [], system);
+    const generalisation = await judgeSketches(key, models, body.drives ?? [], body.sketches ?? [], system);
     const outcome = verdict({ generalisation, parroting });
 
     return Response.json({ likeness, generalisation, parroting, verdict: outcome, generated });
@@ -44,6 +45,7 @@ export async function POST(request: Request): Promise<Response> {
 
 async function generate(
   key: string,
+  models: Models,
   system: string,
   files: Record<string, string>,
   pairs: Body['pairs'],
@@ -71,7 +73,7 @@ async function generate(
       );
       const content = await complete({
         key,
-        model: MODELS.cheap,
+        model: models.cheap,
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: tail },
@@ -89,6 +91,7 @@ async function generate(
 
 async function judgePairs(
   key: string,
+  models: Models,
   pairs: Body['pairs'],
   generated: string[][],
   removedTraits: string[],
@@ -103,7 +106,7 @@ async function judgePairs(
 
   const content = await complete({
     key,
-    model: MODELS.strong,
+    model: models.strong,
     json: true,
     messages: [
       { role: 'system', content: JUDGE_SYSTEM },
@@ -150,10 +153,10 @@ async function judgePairs(
   });
 }
 
-async function judgeSketches(key: string, drives: string[], sketches: string[], system: string) {
+async function judgeSketches(key: string, models: Models, drives: string[], sketches: string[], system: string) {
   const content = await complete({
     key,
-    model: MODELS.strong,
+    model: models.strong,
     json: true,
     messages: [
       { role: 'system', content: JUDGE_SYSTEM },

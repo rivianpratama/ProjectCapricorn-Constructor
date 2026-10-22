@@ -1,7 +1,16 @@
+export interface ModelChoice {
+  cheap: string;
+  strong: string;
+}
+
 export async function api<T>(path: string, key: string, body: unknown): Promise<T> {
+  const models = modelStore.get();
+  const headers: Record<string, string> = { 'content-type': 'application/json', 'x-openrouter-key': key };
+  if (models.cheap) headers['x-openrouter-model-cheap'] = models.cheap;
+  if (models.strong) headers['x-openrouter-model-strong'] = models.strong;
   const response = await fetch(path, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-openrouter-key': key },
+    headers,
     body: JSON.stringify(body),
   });
   const data = (await response.json().catch(() => ({}))) as { error?: string };
@@ -52,5 +61,24 @@ export const packStore = {
   },
   clear(): void {
     window.sessionStorage.removeItem(PACK);
+  },
+};
+
+const MODEL = 'constructinator.models';
+
+/** The chosen OpenRouter models. An empty string means "use the server default". */
+export const modelStore = {
+  get(): ModelChoice {
+    if (typeof window === 'undefined') return { cheap: '', strong: '' };
+    try {
+      const raw = JSON.parse(window.localStorage.getItem(MODEL) ?? '{}') as Partial<ModelChoice>;
+      return { cheap: raw.cheap ?? '', strong: raw.strong ?? '' };
+    } catch {
+      return { cheap: '', strong: '' };
+    }
+  },
+  set(value: ModelChoice): void {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(MODEL, JSON.stringify(value));
   },
 };

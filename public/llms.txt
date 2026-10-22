@@ -1,0 +1,7 @@
+# Constructinator
+
+> Combine up to six WhatsApp or LINE chat exports into one new AI persona and render it as a Soul Pack (replacement persona files for Irises and IrisesWeb). Bring your own OpenRouter key and pick any model. Inspired by Project Capricorn (Capri) from Cyberpunk: Edgerunners 2.
+
+- [README](https://github.com/rivianpratama/Constructinator/blob/main/README.md): what it does, quick start, models, privacy
+- [AGENTS.md](https://github.com/rivianpratama/Constructinator/blob/main/AGENTS.md): commands, hard rules and code map for agents building this repo
+- [PLAN.md](https://github.com/rivianpratama/Constructinator/blob/main/PLAN.md): full design and pipeline

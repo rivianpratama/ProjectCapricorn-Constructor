@@ -16,10 +16,10 @@ export function QuestionCard({ item, onAnswer }: Props) {
   const typeable = item.id === 'name' || item.id === 'nicknames';
 
   return (
-    <div className="card stack">
-      {item.quote ? <span className="muted">“{item.quote}”</span> : null}
-      <b>{item.text}</b>
-      <div className="row">
+    <div className="qcard">
+      {item.quote ? <blockquote className="quote">“{item.quote}”</blockquote> : null}
+      <div className="q">{item.text}</div>
+      <div className="opts">
         {item.options.map(option => (
           <button
             key={option}
@@ -39,15 +39,16 @@ export function QuestionCard({ item, onAnswer }: Props) {
         <div className="row">
           <input
             ref={input}
+            type="text"
+            className="grow"
             value={typed}
-            placeholder={item.id === 'name' ? 'name' : 'nickname'}
+            placeholder={item.id === 'name' ? 'Name' : 'Nickname'}
             onChange={event => setTyped(event.target.value)}
             onKeyDown={event => {
               if (event.key === 'Enter' && typed.trim()) onAnswer(typed.trim());
             }}
-            style={{ flex: 1 }}
           />
-          <button disabled={!typed.trim()} onClick={() => onAnswer(typed.trim())}>use</button>
+          <button className="primary" disabled={!typed.trim()} onClick={() => onAnswer(typed.trim())}>Use</button>
         </div>
       ) : null}
     </div>

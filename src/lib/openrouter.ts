@@ -13,12 +13,76 @@ export interface CompletionOptions {
 }
 
 const ENDPOINT = 'https://openrouter.ai/api/v1/chat/completions';
+const MODELS_ENDPOINT = 'https://openrouter.ai/api/v1/models';
 const KEY_ENDPOINT = 'https://openrouter.ai/api/v1/key';
 
-export const MODELS = {
+export interface Models {
+  /** Bulk work: per-chat engrams, merges, fidelity generation. */
+  cheap: string;
+  /** Synthesis and judging: report, questions, soul, try room. */
+  strong: string;
+}
+
+export const MODELS: Models = {
   cheap: process.env.OPENROUTER_MODEL_CHEAP ?? 'google/gemini-2.5-flash',
   strong: process.env.OPENROUTER_MODEL_STRONG ?? 'anthropic/claude-sonnet-4.5',
 };
+
+const MODEL_ID = /^[A-Za-z0-9][\w.~:\-]*\/[\w.~:\-]+$/;
+
+/** Models picked in the UI ride along as headers; absent or malformed ones fall back to the defaults. */
+export function modelsFrom(request: Request): Models {
+  const pick = (name: string, fallback: string): string => {
+    const value = request.headers.get(name)?.trim();
+    return value && MODEL_ID.test(value) ? value : fallback;
+  };
+  return {
+    cheap: pick('x-openrouter-model-cheap', MODELS.cheap),
+    strong: pick('x-openrouter-model-strong', MODELS.strong),
+  };
+}
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  context: number;
+  /** USD per million prompt tokens; null when OpenRouter does not say. */
+  promptPrice: number | null;
+  completionPrice: number | null;
+}
+
+export async function listModels(): Promise<ModelInfo[]> {
+  let response: Response;
+  try {
+    response = await fetch(MODELS_ENDPOINT, { next: { revalidate: 600 } });
+  } catch {
+    throw new HttpError(502, 'could not reach openrouter');
+  }
+  if (!response.ok) throw new HttpError(response.status, 'model list failed');
+  const data = (await response.json().catch(() => null)) as {
+    data?: Array<{
+      id?: string;
+      name?: string;
+      context_length?: number;
+      pricing?: { prompt?: string; completion?: string };
+      architecture?: { output_modalities?: string[] };
+    }>;
+  } | null;
+  const perMillion = (value?: string): number | null => {
+    const n = Number(value);
+    return value !== undefined && Number.isFinite(n) && n >= 0 ? n * 1_000_000 : null;
+  };
+  return (data?.data ?? [])
+    .filter(model => model.id && (!model.architecture?.output_modalities || model.architecture.output_modalities.includes('text')))
+    .map(model => ({
+      id: model.id as string,
+      name: model.name || (model.id as string),
+      context: model.context_length ?? 0,
+      promptPrice: perMillion(model.pricing?.prompt),
+      completionPrice: perMillion(model.pricing?.completion),
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+}
 
 export function keyFrom(request: Request): string {
   const key = request.headers.get('x-openrouter-key')?.trim();

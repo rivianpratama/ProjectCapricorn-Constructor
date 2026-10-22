@@ -1,4 +1,4 @@
-import { complete, HttpError, keyFrom, MODELS } from '../../../src/lib/openrouter';
+import { complete, HttpError, keyFrom, modelsFrom } from '../../../src/lib/openrouter';
 import { prompt } from '../../../src/lib/prompts';
 import { transcriptFor } from '../../../src/lib/pipeline/transcript';
 import { parseEngram } from '../../../src/lib/schema/engram';
@@ -18,6 +18,7 @@ interface Body {
 export async function POST(request: Request): Promise<Response> {
   try {
     const key = keyFrom(request);
+    const models = modelsFrom(request);
     const body = (await request.json()) as Body;
     if (!body?.messages?.length) throw new HttpError(400, 'no messages for this chat');
 
@@ -32,7 +33,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const markdown = await complete({
       key,
-      model: MODELS.cheap,
+      model: models.cheap,
       messages: [
         { role: 'system', content: prompt('phase1') },
         { role: 'user', content: user },

@@ -1,38 +1,131 @@
+<div align="center">
+
 # Constructinator
 
-Build one new psyche from up to six chat exports, then render it into Irises and IrisesWeb as a Soul Pack.
+**Turn up to six chat exports into one new AI persona.**
 
-```
+Drop WhatsApp or LINE chats, answer a short questionnaire, and get a Soul Pack: persona files you can drop into Irises and IrisesWeb.<br>
+Bring your own OpenRouter key and pick any model you like.
+
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?logo=typescript&logoColor=white)
+![OpenRouter](https://img.shields.io/badge/OpenRouter-any%20model-e5452f)
+![Tests](https://img.shields.io/badge/tests-vitest-6e9f18?logo=vitest&logoColor=white)
+
+</div>
+
+> **Inspiration.** The idea comes from **Project Capricorn (Capri)**, the personality construct in *Cyberpunk: Edgerunners 2* that is made of many digitized human psyches combined into one. Read about it on the [Cyberpunk wiki](https://cyberpunk.fandom.com/wiki/Capri). This project is a fan-inspired experiment and is not affiliated with CD PROJEKT RED, Studio Trigger or Arasaka.
+
+## Features
+
+- **Many chats, one psyche.** Combine one to six chats into a single new persona. The chats are the parents and the persona is their child: it inherits temperament, needs, values and reactions, not their exact lines.
+- **WhatsApp and LINE.** Drop `.txt` exports. Pick the subject, the date range and the relationship for each chat.
+- **Any OpenRouter model.** Search the full catalogue, or paste any `vendor/model` id. Choose one model for bulk reading and another for writing.
+- **Bring your own key.** Your key goes straight to OpenRouter through the app's API routes. It is never stored on a server or logged.
+- **Soul Pack output.** Download a zip with `SOUL.md`, `ENGRAM_REPORT.md`, the rewritten Irises and IrisesWeb persona files, and an `APPLY.md` copy guide.
+- **Fidelity check.** Replays held-out replies through the pack, has a judge pick the real one, scores unseen situations and copying, and revises a failing pack once.
+- **Try room.** Chat with the finished pack at `/try`.
+
+## Quick start
+
+Requires Node.js 20+.
+
+```bash
+git clone https://github.com/rivianpratama/Constructinator.git
+cd Constructinator
 npm install
 npm run dev
 ```
 
-Open the page, paste an OpenRouter key, drop one to six WhatsApp or LINE exports, choose the subject and the range for each, then build. The app runs one engram per chat, merges them into a report, asks a short questionnaire, and renders the pack. Download it as a zip or try it against the vendored IrisesWeb prompt.
+Open <http://localhost:3000>, then:
 
-The key travels in the `x-openrouter-key` header for each request. It is never written to disk or logged, and it is checked with one cheap call before use.
+1. Paste your OpenRouter key.
+2. Pick the **Bulk** and **Synthesis** models.
+3. Drop your chat exports and confirm everyone in them agreed.
+4. Press **Build engrams**, answer the questions, then download the pack.
 
-## Layout
-
-- `prompts/` the phase prompts, as plain system prompts
-- `src/lib/chats/` parsing, stats, held-out pairs, n-gram index
-- `src/lib/schema/` engram, report, questionnaire and soul parsers
-- `src/lib/soul/` slot adapter, renderer, pack, lints
-- `src/lib/fidelity/` IrisesWeb prompt reproduction and scoring
-- `app/api/` one route per phase, plus key check, try and fidelity
-- `soul-pack/` generated output, gitignored
-- `vendor/` read-only snapshots pinned by SHA
-
-## Pack
-
-`soul-pack/` holds `SOUL.md`, `ENGRAM_REPORT.md`, the five target files, and `APPLY.md` with the copy table and the host tests that need updating. Each target file is replaced whole at the same path, with the same exports.
-
-Irises and IrisesWeb are never edited. `npm run sync:baseline` refreshes the snapshots. `npm run try:irisesweb` copies IrisesWeb at HEAD into `.try/`, overlays the pack, and runs its dev server.
-
-## Checks
+## How it works
 
 ```
-npm test
-npm run build
+chat exports ─▶ engram per chat ─▶ merged report ─▶ questionnaire ─▶ soul ─▶ Soul Pack
+   (parse,       (Bulk model)      (Synthesis)      (you answer)   (Synthesis)  (zip)
+ pseudonymise)
 ```
 
-The tests cover byte-for-byte slot round-trips, parsing both export formats, stats, the four schema contracts, prompt structure, pack rendering, and the IrisesWeb tail reproduction.
+| Step | What happens |
+|---|---|
+| Parse | Reads WhatsApp or LINE exports, computes stats, holds out real replies for testing |
+| Pseudonymise | Replaces names before anything leaves the browser |
+| Engram | One analysis per chat, in chunks for long chats, with verbatim evidence for every finding |
+| Merge | Combines the engrams into one report of drives and traits |
+| Questionnaire | You decide the name, nicknames and which traits stay |
+| Compose | Writes the soul, renders the target files and lints every slot |
+| Fidelity | Scores likeness, generalisation and copying on the held-out pairs |
+
+The full design, including why the output is a child and not a clone, is in [PLAN.md](PLAN.md).
+
+## Models
+
+| Setting | Used for | Default |
+|---|---|---|
+| Bulk | Per-chat engrams, merges, fidelity generation | `google/gemini-2.5-flash` |
+| Synthesis | Report, questions, soul, fidelity judging, `/try` | `anthropic/claude-sonnet-4.5` |
+
+The pipeline expects JSON and fixed markdown sections, so pick models that follow formats well. Your choice is saved in the browser. Change the server defaults with environment variables:
+
+```bash
+OPENROUTER_MODEL_CHEAP=openai/gpt-4o-mini
+OPENROUTER_MODEL_STRONG=anthropic/claude-sonnet-4.5
+```
+
+## Soul Pack
+
+The pack replaces whole files at the same path with the same exports. Irises and IrisesWeb are never edited by this project.
+
+```
+soul-pack/
+├── SOUL.md
+├── ENGRAM_REPORT.md
+├── APPLY.md            copy table and the host tests that need updating
+├── irises/…
+└── irises-web/…
+```
+
+`npm run try:irisesweb` copies IrisesWeb at HEAD into `.try/`, overlays the pack and runs its dev server. `npm run sync:baseline` refreshes the pinned snapshots in `vendor/`.
+
+## Privacy
+
+- Your key is sent in an `x-openrouter-key` header per request. "Remember" keeps it in `localStorage`; otherwise it stays in the tab.
+- Names are pseudonymised in the browser before chats are sent to a model. Raw transcripts are dropped once the pack is built.
+- Chat text goes to the models you choose on OpenRouter, under their terms. Only use chats where everyone agreed.
+
+## Project structure
+
+```
+app/                 pages and API routes (one per phase, plus key, models, try, fidelity)
+src/components/      workbench, chat cards, model picker, try room
+src/lib/chats/       parsing, stats, held-out pairs, n-gram index
+src/lib/schema/      engram, report, questionnaire and soul parsers
+src/lib/soul/        slot adapter, renderer, pack, lints
+src/lib/fidelity/    IrisesWeb prompt reproduction and scoring
+prompts/             phase prompts, as plain system prompts
+adapters/            slot map for the target files
+tests/               vitest suite
+vendor/              read-only snapshots pinned by SHA
+```
+
+## Development
+
+```bash
+npm test          # vitest
+npm run build     # production build
+npm run check     # both
+```
+
+Building with an AI agent? Read [AGENTS.md](AGENTS.md) first.
+
+## Credits
+
+- **Project Capricorn** from *Cyberpunk: Edgerunners 2* for the idea of one psyche made from many.
+- The interface is styled after JevPixelArt.
+- Model access through [OpenRouter](https://openrouter.ai).

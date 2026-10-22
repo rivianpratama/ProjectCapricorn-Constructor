@@ -9,53 +9,67 @@ interface Props {
   index: number;
   onChange: (draft: Draft) => void;
   onRemove: () => void;
+  locked?: boolean;
 }
 
-export function ChatCard({ draft, index, onChange, onRemove }: Props) {
+export function ChatCard({ draft, index, onChange, onRemove, locked }: Props) {
   const dates = rangeDates(draft);
   return (
-    <div className="card stack">
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <b>{draft.fileName}</b>
-        <div className="row">
-          <span className="muted">{draft.messages.length}</span>
-          <button onClick={onRemove} aria-label={`Remove ${draft.fileName}`}>×</button>
+    <div className="chatcard">
+      <div className="top">
+        <div className="row" style={{ minWidth: 0, flexWrap: 'nowrap' }}>
+          <span className="chip"><i style={{ background: 'var(--accent)' }} />chat-{index + 1}</span>
+          <b title={draft.fileName}>{draft.fileName}</b>
+        </div>
+        <div className="row" style={{ flexWrap: 'nowrap' }}>
+          <span className="count">{draft.messages.length.toLocaleString()} msgs</span>
+          <button className="small ghost close" onClick={onRemove} disabled={locked} aria-label={`Remove ${draft.fileName}`}>✕</button>
         </div>
       </div>
+      <div className="inner">
+        <div>
+          <span className="lbl">Subject</span>
+          <div className="pick">
+            {draft.participants.map(name => (
+              <button
+                key={name}
+                disabled={locked}
+                className={draft.subject === name ? 'on' : ''}
+                onClick={() => onChange({ ...draft, subject: name })}
+              >
+                {name}
+                <span className="count">{participantCount(draft, name)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
-      <div className="row">
-        {draft.participants.map(name => (
-          <button
-            key={name}
-            className={draft.subject === name ? 'on' : ''}
-            onClick={() => onChange({ ...draft, subject: name })}
-          >
-            {name} <span className="muted">{participantCount(draft, name)}</span>
-          </button>
-        ))}
+        <div>
+          <Sparkline draft={draft} onChange={onChange} />
+          <div className="dates" style={{ marginTop: 8 }}>
+            <span>{dates.start}</span>
+            <span>{dates.end}</span>
+          </div>
+        </div>
+
+        <div>
+          <span className="lbl">Relationship</span>
+          <div className="pick">
+            {RELATIONSHIPS.map(relationship => (
+              <button
+                key={relationship}
+                disabled={locked}
+                className={draft.relationship === relationship ? 'on' : ''}
+                onClick={() => onChange({ ...draft, relationship })}
+              >
+                {relationship}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {draft.error ? <span className="err">{draft.error}</span> : null}
       </div>
-
-      <Sparkline draft={draft} onChange={onChange} />
-
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <span className="muted">{dates.start}</span>
-        <span className="muted">{dates.end}</span>
-      </div>
-
-      <div className="row">
-        {RELATIONSHIPS.map(relationship => (
-          <button
-            key={relationship}
-            className={draft.relationship === relationship ? 'on' : ''}
-            onClick={() => onChange({ ...draft, relationship })}
-          >
-            {relationship}
-          </button>
-        ))}
-      </div>
-
-      {draft.error ? <span className="bad">{draft.error}</span> : null}
-      <span className="muted">chat-{index + 1}</span>
     </div>
   );
 }
@@ -83,7 +97,7 @@ function Sparkline({ draft, onChange }: { draft: Draft; onChange: (draft: Draft)
   return (
     <div
       ref={track}
-      style={{ position: 'relative', height: 44, touchAction: 'none', cursor: 'pointer' }}
+      style={{ position: 'relative', height: 44, touchAction: 'none', cursor: 'pointer', background: 'var(--well)', borderRadius: 6 }}
       onPointerMove={move}
       onPointerUp={() => {
         dragging.current = null;
@@ -104,9 +118,9 @@ function Sparkline({ draft, onChange }: { draft: Draft; onChange: (draft: Draft)
           bottom: 0,
           left: `${pct(draft.from)}%`,
           right: `${100 - pct(draft.to)}%`,
-          background: 'rgba(22,21,26,0.06)',
-          borderLeft: '2px solid var(--ink)',
-          borderRight: '2px solid var(--ink)',
+          background: 'rgba(229,69,47,0.08)',
+          borderLeft: '2px solid var(--accent)',
+          borderRight: '2px solid var(--accent)',
         }}
       />
       {(['from', 'to'] as const).map(handle => (
@@ -147,7 +161,7 @@ function Sparkline({ draft, onChange }: { draft: Draft; onChange: (draft: Draft)
               height: 44,
               margin: '6px auto 0',
               borderRadius: 2,
-              background: 'var(--ink)',
+              background: 'var(--accent)',
             }}
           />
         </div>

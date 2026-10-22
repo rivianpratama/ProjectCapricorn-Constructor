@@ -1,4 +1,4 @@
-import { complete, HttpError, keyFrom, MODELS } from '../../../src/lib/openrouter';
+import { complete, HttpError, keyFrom, modelsFrom, type Models } from '../../../src/lib/openrouter';
 import { prompt } from '../../../src/lib/prompts';
 import { parseSoul } from '../../../src/lib/soul/parseSoul';
 import { buildPack } from '../../../src/lib/soul/pack';
@@ -19,6 +19,7 @@ interface Body {
 export async function POST(request: Request): Promise<Response> {
   try {
     const key = keyFrom(request);
+    const models = modelsFrom(request);
     const body = (await request.json()) as Body;
     if (!body?.report) throw new HttpError(400, 'no report');
 
@@ -48,7 +49,7 @@ export async function POST(request: Request): Promise<Response> {
         ].join('\n');
 
     const system = prompt('phase3b');
-    let markdown = await compose(key, system, user);
+    let markdown = await compose(key, models, system, user);
     let soul = parseSoul(markdown);
     let pack = buildPack(soul, markdown, { n: body.n, report: body.report });
 
@@ -59,6 +60,7 @@ export async function POST(request: Request): Promise<Response> {
       ];
       markdown = await compose(
         key,
+        models,
         system,
         [user, '', '## Fix these before answering again', ...problems.map(problem => `- ${problem}`), '', 'Rewrite the whole soul, changing only what these demand.'].join('\n'),
       );
@@ -96,10 +98,10 @@ function baseSlots(): Record<string, string> {
   return out;
 }
 
-async function compose(key: string, system: string, user: string): Promise<string> {
+async function compose(key: string, models: Models, system: string, user: string): Promise<string> {
   return complete({
     key,
-    model: MODELS.strong,
+    model: models.strong,
     messages: [
       { role: 'system', content: system },
       { role: 'user', content: user },

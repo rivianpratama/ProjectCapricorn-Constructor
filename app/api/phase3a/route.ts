@@ -1,4 +1,4 @@
-import { complete, HttpError, keyFrom, MODELS, parseJson } from '../../../src/lib/openrouter';
+import { complete, HttpError, keyFrom, modelsFrom, parseJson } from '../../../src/lib/openrouter';
 import { prompt } from '../../../src/lib/prompts';
 import { parseQuestionnaire } from '../../../src/lib/schema/questionnaire';
 
@@ -12,12 +12,13 @@ interface Body {
 export async function POST(request: Request): Promise<Response> {
   try {
     const key = keyFrom(request);
+    const models = modelsFrom(request);
     const body = (await request.json()) as Body;
     if (!body?.report) throw new HttpError(400, 'no report');
 
     const content = await complete({
       key,
-      model: MODELS.strong,
+      model: models.strong,
       json: true,
       messages: [
         { role: 'system', content: prompt('phase3a') },

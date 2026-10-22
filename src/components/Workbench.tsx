@@ -1,15 +1,18 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { analyse, chunkMessages, heldOutPairs, pseudonymise, splitHoldout } from '../lib/chats/analyse';
 import type { ChatStats, HeldOutPair } from '../lib/chats/types';
 import { api, keyStore, packStore } from '../lib/client/api';
+import { useModels } from '../lib/client/useModels';
 import { draftFromFile, draftMessages, type Draft } from '../lib/client/drafts';
 import type { Questionnaire } from '../lib/schema/questionnaire';
 import type { PackFile } from '../lib/soul/pack';
 import { ChatCard } from './ChatCard';
 import { FidelityPanel } from './FidelityPanel';
 import { QuestionCard } from './QuestionCard';
+import { KeyPanel, ModelsPanel, useOpenPanels } from './Settings';
+import { Seg } from './ui';
 
 type Stage = 'chats' | 'running' | 'questions' | 'soul' | 'done';
 
@@ -47,11 +50,16 @@ interface Phase3aResponse {
 const STEPS = ['chats', 'running', 'questions', 'soul', 'done'];
 
 export function Workbench() {
-  const [key, setKey] = useState(() => keyStore.get());
+  const [key, setKey] = useState('');
+  useEffect(() => setKey(keyStore.get()), []);
 
-  const [keyBad, setKeyBad] = useState(false);
-  const [showKey, setShowKey] = useState(false);
-  const [remember, setRemember] = useState(() => keyStore.remembered());
+  const modelState = useModels();
+  const panels = useOpenPanels({ key: true, models: true });
+  const [drawer, setDrawer] = useState(false);
+  const [tab, setTab] = useState<'report' | 'files' | 'log'>('report');
+  const [fileIndex, setFileIndex] = useState(0);
+  const [log, setLog] = useState<string[]>([]);
+  const [over, setOver] = useState(false);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [dropError, setDropError] = useState('');
   const [consent, setConsent] = useState(false);
@@ -113,15 +121,9 @@ export function Workbench() {
     setDrafts(current => [...current, ...added]);
   }
 
-  async function checkKey() {
-    if (key.trim().length < 20) return;
-    try {
-      await api('/api/key', key, {});
-      setKeyBad(false);
-      keyStore.set(key, remember);
-    } catch {
-      setKeyBad(true);
-    }
+  function addLog(line: string) {
+    const stamp = new Date().toLocaleTimeString([], { hour12: false });
+    setLog(current => [...current, `${stamp}  ${line}`]);
   }
 
   async function build() {
@@ -129,6 +131,7 @@ export function Workbench() {
     running.current = true;
     setError('');
     setStage('running');
+    addLog(`Building ${drafts.length} engram${drafts.length === 1 ? '' : 's'}.`);
     const chats = drafts.map((draft, i) => ({ draft, label: `chat-${i + 1}` }));
     setLanes([
       ...chats.map(chat => ({ id: chat.draft.id, label: chat.label, value: 0 })),
@@ -199,6 +202,7 @@ export function Workbench() {
       setHeldOut(pairs.slice(0, 20));
       setSubjectMessages(subject.slice(0, 3_000));
 
+      addLog('Engrams done. Merging into one report.');
       setLane('merge', 25);
       const merged = await api<Phase2Response>('/api/phase2', key, {
         chats: chats.map((chat, i) => ({
@@ -215,6 +219,7 @@ export function Workbench() {
       setConfidence(merged.report.ledger.map(row => row.confidence));
       setLane('merge', 100);
 
+      addLog('Report written. Drafting the questionnaire.');
       setLane('questions', 40);
       const asked = await api<Phase3aResponse>('/api/phase3a', key, { report: merged.markdown, n: chats.length });
       setLane('questions', 100);
@@ -222,8 +227,10 @@ export function Workbench() {
       setAnswers(Object.fromEntries(asked.questionnaire.items.map(item => [item.id, item.default])));
       setQIndex(0);
       setStage('questions');
+      addLog(`${asked.questionnaire.items.length} questions ready.`);
     } catch (buildError) {
       setError(buildError instanceof Error ? buildError.message : 'build failed');
+      addLog(`Build failed: ${buildError instanceof Error ? buildError.message : 'unknown'}`);
       setStage('chats');
     } finally {
       running.current = false;
@@ -250,6 +257,7 @@ export function Workbench() {
       if (!options.revise) setLane('soul', 100);
       setResult(response);
       setStage('done');
+      addLog(`Pack ready: ${response.files.length} files.`);
       packStore.set(Object.fromEntries(response.files.map(file => [file.path, file.source])));
       // The pack is built, so the raw transcripts are no longer needed.
       setDrafts(current => current.map(draft => ({ ...draft, messages: [] })));
@@ -287,193 +295,284 @@ export function Workbench() {
     URL.revokeObjectURL(url);
   }, [result]);
 
+  const needsKey = !key;
+  const files = result?.files ?? [];
+  const current = files[Math.min(fileIndex, Math.max(0, files.length - 1))];
+  const busy = stage === 'running' || stage === 'soul';
+  const statusText = busy ? 'building' : stage === 'done' ? 'complete' : stage === 'questions' ? 'asking' : error ? 'error' : 'idle';
+  const statusClass = busy ? 'painting' : stage === 'done' ? 'complete' : '';
+  const blocker = !drafts.length
+    ? 'Add at least one chat export.'
+    : !drafts.every(draft => draft.subject && draft.messages.length > 1)
+      ? 'Each chat needs a subject and more than one message.'
+      : !consent
+        ? 'Confirm everyone agreed.'
+        : needsKey
+          ? 'Add your OpenRouter key.'
+          : '';
+
   return (
-    <main>
-      <Stepper step={step} />
-      <h1>Constructinator</h1>
+    <main className={`wrap ${drawer ? 'drawer-open' : ''}`}>
+      <header className="masthead">
+        <div className="wordmark">
+          <h1>Constructinator</h1>
+        </div>
+        <div className="row">
+          <span className={`status ${statusClass}`}><i /> {statusText}</span>
+          <button
+            type="button"
+            className={`iconbtn ${drawer ? 'active' : ''}`}
+            onClick={() => setDrawer(value => !value)}
+            aria-pressed={drawer}
+            aria-controls="drawer"
+            title={drawer ? 'Hide inspector' : 'Show inspector'}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+            Inspect{log.length ? <span className="badge">{log.length}</span> : null}
+          </button>
+        </div>
+      </header>
 
-      {stage === 'chats' || stage === 'running' ? (
-        <div className="stack">
-          <div className="row">
-            <input
-              type={showKey ? 'text' : 'password'}
-              value={key}
-              placeholder="sk-or-…"
-              autoComplete="off"
-              spellCheck={false}
-              style={{ flex: 1 }}
-              onChange={event => {
-                setKey(event.target.value);
-                setKeyBad(false);
-                keyStore.set(event.target.value, remember);
-              }}
-              onBlur={checkKey}
-            />
-            <button onClick={() => setShowKey(value => !value)}>{showKey ? 'hide' : 'show'}</button>
-            <label className="row" style={{ gap: 6 }}>
-              <input
-                type="checkbox"
-                checked={remember}
-                onChange={event => {
-                  setRemember(event.target.checked);
-                  keyStore.set(key, event.target.checked);
-                }}
-              />
-              <span className="muted">remember</span>
-            </label>
-          </div>
-          {keyBad ? <span className="bad">key rejected</span> : null}
+      <div className={`grid ${drawer ? 'with-drawer' : ''}`}>
+        {/* ---------------- controls rail ---------------- */}
+        <div className="stack rail">
+          <KeyPanel value={key} onChange={setKey} open={panels.open.key} onToggle={panels.toggle} disabled={busy} />
+          <ModelsPanel state={modelState} open={panels.open.models} onToggle={panels.toggle} disabled={busy} />
 
-          {drafts.length < 6 ? (
-            <div
-              className="drop"
-              onClick={() => fileInput.current?.click()}
-              onDragOver={event => event.preventDefault()}
-              onDrop={event => {
-                event.preventDefault();
-                void addFiles(event.dataTransfer.files);
-              }}
-            >
-              drop chat exports
-            </div>
+          {stage === 'chats' || stage === 'running' ? (
+            <section className="panel">
+              <div className="body">
+                <label className="check" htmlFor="consent" style={{ marginTop: 0 }}>
+                  <input id="consent" type="checkbox" checked={consent} disabled={busy} onChange={event => setConsent(event.target.checked)} />
+                  <span>Everyone in these chats agreed</span>
+                </label>
+              </div>
+            </section>
           ) : null}
-          <input
-            ref={fileInput}
-            type="file"
-            accept=".txt,.csv,text/plain"
-            multiple
-            hidden
-            onChange={event => {
-              if (event.target.files) void addFiles(event.target.files);
-              event.target.value = '';
-            }}
-          />
-          {dropError ? <span className="bad">{dropError}</span> : null}
 
-          <label className="row" style={{ gap: 8 }}>
-            <input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} />
-            <span className="muted">everyone in these chats agreed to this</span>
-          </label>
+          <div className="actions">
+            {stage === 'chats' || stage === 'running' ? (
+              <button className="primary" disabled={!!blocker || stage === 'running'} onClick={() => void build()} title={blocker}>
+                {stage === 'running' ? 'Building…' : 'Build engrams'}
+              </button>
+            ) : null}
+            {stage !== 'chats' ? (
+              <button className="ghost" onClick={reset} disabled={busy}>Start over</button>
+            ) : null}
+          </div>
+        </div>
 
-          {drafts.map((draft, index) => (
-            <ChatCard
-              key={draft.id}
-              draft={draft}
-              index={index}
-              onChange={next => setDrafts(current => current.map(item => (item.id === next.id ? next : item)))}
-              onRemove={() => setDrafts(current => current.filter(item => item.id !== draft.id))}
-            />
-          ))}
-
-          {lanes.length ? (
-            <div className="lanes">
-              {lanes.map(lane => (
-                <div key={lane.id} className="row" style={{ gap: 10 }}>
-                  <span className="muted" style={{ width: 90 }}>{lane.label}</span>
-                  <div className="lane" style={{ flex: 1 }}>
-                    <i style={{ width: `${lane.value}%`, background: lane.bad ? 'var(--bad)' : undefined }} />
-                  </div>
+        {/* ---------------- stage ---------------- */}
+        <div className="stack work">
+          <section className="panel fill">
+            <div className="head">
+              <div className="row">
+                <Stepper step={step} />
+              </div>
+              {stage === 'done' && result ? (
+                <div className="row">
+                  <button className="small" onClick={() => window.open('/try', '_blank')}>Try it</button>
+                  <button className="small primary" onClick={() => void download()}>Download zip</button>
                 </div>
-              ))}
+              ) : null}
             </div>
-          ) : null}
 
-          {error ? <span className="bad">{error}</span> : null}
+            <div className="scroll">
+              {stage === 'chats' || stage === 'running' ? (
+                <>
+                  {drafts.length < 6 && stage === 'chats' ? (
+                    <div
+                      className={`drop ${over ? 'over' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => fileInput.current?.click()}
+                      onKeyDown={event => {
+                        if (event.key === 'Enter' || event.key === ' ') fileInput.current?.click();
+                      }}
+                      onDragOver={event => {
+                        event.preventDefault();
+                        setOver(true);
+                      }}
+                      onDragLeave={() => setOver(false)}
+                      onDrop={event => {
+                        event.preventDefault();
+                        setOver(false);
+                        void addFiles(event.dataTransfer.files);
+                      }}
+                    >
+                      <b>Drop chat exports</b>
+                      <span>{drafts.length} / 6</span>
+                    </div>
+                  ) : null}
+                  <input
+                    ref={fileInput}
+                    type="file"
+                    accept=".txt,.csv,text/plain"
+                    multiple
+                    hidden
+                    onChange={event => {
+                      if (event.target.files) void addFiles(event.target.files);
+                      event.target.value = '';
+                    }}
+                  />
+                  {dropError ? <span className="err">{dropError}</span> : null}
 
-          <div className="row">
-            <button className="primary" disabled={!ready || !key || stage === 'running'} onClick={() => void build()}>
-              Build engrams
-            </button>
-          </div>
+                  {drafts.length ? (
+                    <div className="cards">
+                      {drafts.map((draft, index) => (
+                        <ChatCard
+                          key={draft.id}
+                          draft={draft}
+                          index={index}
+                          locked={stage === 'running'}
+                          onChange={next => setDrafts(list => list.map(item => (item.id === next.id ? next : item)))}
+                          onRemove={() => setDrafts(list => list.filter(item => item.id !== draft.id))}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {lanes.length ? <Lanes lanes={lanes} /> : null}
+                  {error ? <span className="err">{error}</span> : null}
+                </>
+              ) : null}
+
+              {stage === 'questions' && questions ? (
+                <>
+                  <div className="row between">
+                    <span className="count">Question {qIndex + 1} of {questions.items.length}</span>
+                    {qIndex > 0 ? <button className="small ghost" onClick={() => setQIndex(qIndex - 1)}>Back</button> : null}
+                  </div>
+                  <div className="progress"><i style={{ width: `${(qIndex / questions.items.length) * 100}%` }} /></div>
+                  <QuestionCard key={questions.items[qIndex].id} item={questions.items[qIndex]} onAnswer={answer} />
+                  {error ? <span className="err">{error}</span> : null}
+                </>
+              ) : null}
+
+              {stage === 'soul' ? (
+                <>
+                  <Lanes lanes={lanes.filter(lane => lane.id === 'soul')} />
+                  {error ? <span className="err">{error}</span> : null}
+                </>
+              ) : null}
+
+              {stage === 'done' && result ? (
+                <>
+                  <div className="summary">
+                    <div className="stat"><b>{result.files.length}</b><span>files</span></div>
+                    <div className="stat">
+                      <b>{Math.round(result.files.reduce((sum, file) => sum + file.bytes, 0) / 1024)}<small> kb</small></b>
+                      <span>pack size</span>
+                    </div>
+                    <div className="stat"><b>{drafts.length}</b><span>chats</span></div>
+                    <div className="stat">
+                      <b>{confidence.filter(value => value === 'high').length}<small> / {confidence.length}</small></b>
+                      <span>high confidence</span>
+                    </div>
+                  </div>
+
+                  {result.issues.length || result.poolIssues.length ? (
+                    <div className="issues">
+                      {result.issues.map((issue, i) => <span key={i}>{issue.slot}: {issue.detail}</span>)}
+                      {result.poolIssues.map((issue, i) => <span key={i}>{issue.pool}: {issue.detail}</span>)}
+                    </div>
+                  ) : null}
+
+                  <FidelityPanel
+                    files={Object.fromEntries(result.files.map(file => [file.path, file.source]))}
+                    drives={drives}
+                    pairs={heldOut}
+                    subjectMessages={subjectMessages}
+                    sketches={sketches}
+                    removedTraits={(questions?.items ?? [])
+                      .filter(item => item.id.startsWith('trait-') && answers[item.id] === 'Remove')
+                      .map(item => `${item.text} (${item.quote})`)}
+                    onRevise={async fixes => {
+                      const next = await compose(answers, { previous: result.markdown, fixes, revise: true });
+                      return next ? Object.fromEntries(next.files.map(file => [file.path, file.source])) : null;
+                    }}
+                  />
+                </>
+              ) : null}
+            </div>
+          </section>
         </div>
-      ) : null}
 
-      {stage === 'questions' && questions ? (
-        <div className="stack">
-          <div className="muted">{qIndex + 1} / {questions.items.length}</div>
-          <QuestionCard item={questions.items[qIndex]} onAnswer={answer} />
-          {error ? <span className="bad">{error}</span> : null}
-        </div>
-      ) : null}
-
-      {stage === 'soul' ? (
-        <div className="lanes">
-          <div className="row" style={{ gap: 10 }}>
-            <span className="muted" style={{ width: 90 }}>soul</span>
-            <div className="lane" style={{ flex: 1 }}>
-              <i style={{ width: `${lanes.find(lane => lane.id === 'soul')?.value ?? 20}%` }} />
+        {/* ---------------- inspector drawer ---------------- */}
+        {drawer && <div className="scrim" onClick={() => setDrawer(false)} aria-hidden="true" />}
+        <aside id="drawer" className={`drawer ${drawer ? 'open' : ''}`} aria-label="Inspector" aria-hidden={!drawer}>
+          <section className="panel fill">
+            <div className="head">
+              <Seg
+                value={tab}
+                onChange={setTab}
+                options={[
+                  { id: 'report', label: 'Report' },
+                  { id: 'files', label: files.length ? `Files · ${files.length}` : 'Files' },
+                  { id: 'log', label: log.length ? `Log · ${log.length}` : 'Log' },
+                ]}
+              />
+              <div className="row">
+                {tab === 'log' ? <button className="small ghost" onClick={() => setLog([])} disabled={!log.length}>Clear</button> : null}
+                <button className="small ghost close" onClick={() => setDrawer(false)} aria-label="Hide inspector">✕</button>
+              </div>
             </div>
-          </div>
-          {error ? <span className="bad">{error}</span> : null}
-        </div>
-      ) : null}
-
-      {stage === 'done' && result ? (
-        <div className="stack">
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <div className="stack" style={{ gap: 2 }}>
-              <b>{result.files.length} files</b>
-              <span className="muted">
-                {Math.round(result.files.reduce((sum, file) => sum + file.bytes, 0) / 1024)} kb · {drafts.length} chats ·{' '}
-                {confidence.filter(value => value === 'high').length} high / {confidence.filter(value => value === 'medium').length} medium /{' '}
-                {confidence.filter(value => value === 'low').length} low
-              </span>
-            </div>
-            <div className="row">
-              <button onClick={() => window.open('/try', '_blank')}>Try</button>
-              <button className="primary" onClick={() => void download()}>Download</button>
-            </div>
-          </div>
-
-          {result.issues.length || result.poolIssues.length ? (
-            <div className="card stack">
-              {result.issues.map((issue, i) => (
-                <span key={i} className="bad">{issue.slot}: {issue.detail}</span>
-              ))}
-              {result.poolIssues.map((issue, i) => (
-                <span key={i} className="bad">{issue.pool}: {issue.detail}</span>
-              ))}
-            </div>
-          ) : null}
-
-          <FidelityPanel
-            files={Object.fromEntries(result.files.map(file => [file.path, file.source]))}
-            drives={drives}
-            pairs={heldOut}
-            subjectMessages={subjectMessages}
-            sketches={sketches}
-            removedTraits={(questions?.items ?? [])
-              .filter(item => item.id.startsWith('trait-') && answers[item.id] === 'Remove')
-              .map(item => `${item.text} (${item.quote})`)}
-            onRevise={async fixes => {
-              const next = await compose(answers, { previous: result.markdown, fixes, revise: true });
-              return next ? Object.fromEntries(next.files.map(file => [file.path, file.source])) : null;
-            }}
-          />
-
-          <div className="row">
-            <button onClick={reset}>Start over</button>
-          </div>
-        </div>
-      ) : null}
+            {tab === 'report' ? (
+              <>
+                <pre>{report || ' '}</pre>
+              </>
+            ) : null}
+            {tab === 'files' ? (
+              <>
+                {files.length ? (
+                  <div className="note">
+                    <select value={fileIndex} onChange={event => setFileIndex(Number(event.target.value))}>
+                      {files.map((file, index) => <option key={file.path} value={index}>{file.path}</option>)}
+                    </select>
+                  </div>
+                ) : null}
+                <pre>{current?.source ?? ' '}</pre>
+              </>
+            ) : null}
+            {tab === 'log' ? (
+              <div className="log">{log.length ? log.map((line, i) => <div key={i}>{line}</div>) : <div> </div>}</div>
+            ) : null}
+          </section>
+        </aside>
+      </div>
     </main>
+  );
+}
+
+const STEP_LABELS = ['Chats', 'Engrams', 'Questions', 'Soul', 'Pack'];
+
+function Lanes({ lanes }: { lanes: Lane[] }) {
+  return (
+    <div className="lanes">
+      {lanes.map(lane => (
+        <div key={lane.id} className="laneRow">
+          <span className="name">{lane.label}</span>
+          <div className={`progress ${lane.bad ? 'bad' : lane.value >= 100 ? 'fin' : 'live'}`}>
+            <i style={{ width: `${lane.value}%` }} />
+          </div>
+          <span className="pct">{lane.value}%</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
 function Stepper({ step }: { step: number }) {
   return (
-    <div className="row" style={{ gap: 6, marginBottom: 28 }}>
-      {[0, 1, 2, 3, 4].map(index => (
-        <i
-          key={index}
-          style={{
-            height: 3,
-            flex: 1,
-            borderRadius: 2,
-            background: index <= step ? 'var(--ink)' : 'var(--dead)',
-          }}
-        />
+    <span className="steps" aria-label={`Step ${step + 1} of 5`}>
+      {STEP_LABELS.map((label, index) => (
+        <span key={label} className={`step ${index < step ? 'done' : index === step ? 'now' : ''}`}>
+          <i />
+          {label}
+        </span>
       ))}
-    </div>
+    </span>
   );
 }

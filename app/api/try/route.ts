@@ -1,4 +1,4 @@
-import { complete, HttpError, keyFrom, MODELS, parseJson } from '../../../src/lib/openrouter';
+import { complete, HttpError, keyFrom, modelsFrom, parseJson } from '../../../src/lib/openrouter';
 import { buildTail } from '../../../src/lib/fidelity/tail';
 import { webSystemPrompt } from '../../../src/lib/fidelity/irisesweb';
 
@@ -23,6 +23,7 @@ interface Reply {
 export async function POST(request: Request): Promise<Response> {
   try {
     const key = keyFrom(request);
+    const models = modelsFrom(request);
     const body = (await request.json()) as Body;
     if (!body?.text?.trim()) throw new HttpError(400, 'nothing to reply to');
 
@@ -50,7 +51,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const content = await complete({
       key,
-      model: MODELS.strong,
+      model: models.strong,
       messages: [
         { role: 'system', content: system },
         ...history,

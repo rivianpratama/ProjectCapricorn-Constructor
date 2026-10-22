@@ -1,6 +1,28 @@
 {
   "name": "constructinator",
   "version": "0.1.0",
+  "description": "Combine up to six chat exports into one new AI persona and render it as a Soul Pack. Bring your own OpenRouter key and pick any model. Inspired by Project Capricorn (Capri) from Cyberpunk: Edgerunners 2.",
+  "keywords": [
+    "persona",
+    "ai-persona",
+    "personality",
+    "psyche",
+    "chat-analysis",
+    "whatsapp",
+    "line",
+    "openrouter",
+    "llm",
+    "nextjs",
+    "soul-pack",
+    "project-capricorn",
+    "capri",
+    "cyberpunk-edgerunners"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rivianpratama/Constructinator.git"
+  },
+  "homepage": "https://github.com/rivianpratama/Constructinator#readme",
   "private": true,
   "type": "module",
   "scripts": {

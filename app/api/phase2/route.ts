@@ -1,4 +1,4 @@
-import { complete, HttpError, keyFrom, MODELS } from '../../../src/lib/openrouter';
+import { complete, HttpError, keyFrom, modelsFrom } from '../../../src/lib/openrouter';
 import { prompt } from '../../../src/lib/prompts';
 import { inheritanceRules } from '../../../src/lib/pipeline/rules';
 import { parseReport } from '../../../src/lib/schema/report';
@@ -22,6 +22,7 @@ interface Body {
 export async function POST(request: Request): Promise<Response> {
   try {
     const key = keyFrom(request);
+    const models = modelsFrom(request);
     const body = (await request.json()) as Body;
     const chats = body?.chats ?? [];
     if (chats.length < 1 || chats.length > 6) throw new HttpError(400, 'one to six chats');
@@ -53,7 +54,7 @@ export async function POST(request: Request): Promise<Response> {
 
     const markdown = await complete({
       key,
-      model: MODELS.strong,
+      model: models.strong,
       messages: [
         { role: 'system', content: prompt('phase2') },
         { role: 'user', content: user },

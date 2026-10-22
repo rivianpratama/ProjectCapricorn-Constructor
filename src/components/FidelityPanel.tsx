@@ -69,46 +69,49 @@ export function FidelityPanel({ files, drives, pairs, subjectMessages, sketches,
     }
   }
 
+  const busy = state === 'running' || state === 'revising';
   return (
-    <div className="card stack">
-      <div className="row" style={{ justifyContent: 'space-between' }}>
-        <b>Fidelity</b>
-        <button
-          disabled={state === 'running' || state === 'revising' || !pairs.length}
-          onClick={() => {
-            setState('running');
-            void measure(files, true);
-          }}
-        >
-          {state === 'running' ? 'measuring' : state === 'revising' ? 'revising' : 'Measure'}
-        </button>
+    <section className="panel">
+      <div className="head">
+        <h2 className="eyebrow">Fidelity</h2>
+        <div className="row">
+          {revised ? <span className="chip"><i style={{ background: 'var(--g)' }} />revised once</span> : null}
+          <button
+            className="small"
+            disabled={busy || !pairs.length}
+            onClick={() => {
+              setState('running');
+              void measure(files, true);
+            }}
+          >
+            {state === 'running' ? 'Measuring…' : state === 'revising' ? 'Revising…' : result ? 'Measure again' : 'Measure'}
+          </button>
+        </div>
       </div>
-
       {result ? (
         <>
-          <div className="tiles">
-            <div className="tile">
-              <b>{result.likeness.realPicked}/{result.likeness.total}</b>
-              <span className="muted">real picked</span>
-              <span className="muted">voice {result.likeness.voice} · move {result.likeness.move} · fit {result.likeness.emotion}</span>
+          <div className="tiles" style={{ border: 0, borderRadius: 0 }}>
+            <div className="stat">
+              <b>{result.likeness.realPicked}<small> / {result.likeness.total}</small></b>
+              <span>real picked</span>
+              <small className="sub">voice {result.likeness.voice} · move {result.likeness.move} · fit {result.likeness.emotion}</small>
             </div>
-            <div className="tile">
-              <b>{result.generalisation.score}/5</b>
-              <span className="muted">unseen situations</span>
+            <div className="stat">
+              <b>{result.generalisation.score}<small> / 5</small></b>
+              <span>unseen situations</span>
             </div>
-            <div className="tile">
-              <b>{Math.round(result.parroting.overlap * 100)}%</b>
-              <span className="muted">copied · {Math.round(result.parroting.openerDistinctness * 100)}% openers</span>
+            <div className="stat">
+              <b>{Math.round(result.parroting.overlap * 100)}<small>%</small></b>
+              <span>copied</span>
+              <small className="sub">{Math.round(result.parroting.openerDistinctness * 100)}% distinct openers</small>
             </div>
           </div>
           {result.verdict.revise.length ? (
-            <span className="bad">still failing: {result.verdict.revise.join(', ')}</span>
+            <div className="note err">Still failing: {result.verdict.revise.join(', ')}</div>
           ) : null}
-          {revised ? <span className="muted">revised once</span> : null}
         </>
       ) : null}
-
-      {error ? <span className="bad">{error}</span> : null}
-    </div>
+      {error ? <div className="note err">{error}</div> : null}
+    </section>
   );
 }
