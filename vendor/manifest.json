@@ -1,0 +1,10 @@
+{
+  "irises": {
+    "sha": "0fe1d67",
+    "path": "vendor/irises/@0fe1d67"
+  },
+  "irises-web": {
+    "sha": "d2b3f03",
+    "path": "vendor/irises-web/@d2b3f03"
+  }
+}

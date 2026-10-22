@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "targets": {
+    "irises": {
+      "label": "Irises",
+      "root": "irises",
+      "files": [
+        {
+          "path": "src/persona/policy.ts",
+          "slots": [
+            {
+              "id": "irises.policy.persona",
+              "soul": "iris.persona",
+              "tag": "identity+voice+machinery",
+              "start": "export const PERSONA_BLOCK = `",
+              "end": "`;",
+              "format": "template"
+            }
+          ]
+        },
+        {
+          "path": "src/persona/voiceSamples.ts",
+          "slots": [
+            {
+              "id": "irises.voice.samples",
+              "soul": "samples",
+              "tag": "voice",
+              "start": "export const SAMPLE_REPLIES: readonly (readonly string[])[] = [\n",
+              "end": "\n];",
+              "format": "tsPool",
+              "pool": "replies"
+            },
+            {
+              "id": "irises.voice.stretch",
+              "soul": "stretch",
+              "tag": "voice",
+              "start": "export const STRETCH_WORDS: readonly string[] = [\n",
+              "end": "\n];",
+              "format": "tsPool",
+              "pool": "strings"
+            },
+            {
+              "id": "irises.voice.punct",
+              "soul": "punct",
+              "tag": "voice",
+              "start": "export const PUNCT_RUNS: readonly string[] = [\n",
+              "end": "\n];",
+              "format": "tsPool",
+              "pool": "strings"
+            }
+          ]
+        },
+        {
+          "path": "src/agents/convo/Context.md",
+          "slots": [
+            {
+              "id": "irises.context.how",
+              "soul": "iris.how",
+              "tag": "voice",
+              "start": "## How you write (strict, this matters)",
+              "end": "\n\n## Language",
+              "format": "raw",
+              "includeStart": true
+            },
+            {
+              "id": "irises.context.language",
+              "soul": "iris.language",
+              "tag": "voice",
+              "start": "## Language",
+              "end": "\n\n## Connect the dots",
+              "format": "raw",
+              "includeStart": true
+            },
+            {
+              "id": "irises.context.banter",
+              "soul": "iris.banter",
+              "tag": "voice",
+              "start": "**Banter — the play frame.**",
+              "end": "\n\n**Four bends that stay safe**",
+              "format": "raw",
+              "includeStart": true
+            }
+          ]
+        }
+      ]
+    },
+    "irises-web": {
+      "label": "IrisesWeb",
+      "root": "irises-web",
+      "files": [
+        {
+          "path": "src/worker/prompt/persona.ts",
+          "slots": [
+            {
+              "id": "irises-web.persona",
+              "soul": "web.persona",
+              "tag": "identity+voice+machinery",
+              "start": "export const PERSONA = `",
+              "end": "`;",
+              "format": "template"
+            },
+            {
+              "id": "irises-web.how",
+              "soul": "web.how",
+              "tag": "voice",
+              "start": "export const HOW_YOU_WRITE = `",
+              "end": "`;",
+              "format": "template"
+            }
+          ]
+        },
+        {
+          "path": "src/worker/prompt/voice.ts",
+          "slots": [
+            {
+              "id": "irises-web.voice.samples",
+              "soul": "samples",
+              "tag": "voice",
+              "start": "export const SAMPLE_REPLIES: readonly (readonly string[])[] = [\n",
+              "end": "\n];",
+              "format": "tsPool",
+              "pool": "replies"
+            },
+            {
+              "id": "irises-web.voice.stretch",
+              "soul": "stretch",
+              "tag": "voice",
+              "start": "export const STRETCH_WORDS: readonly string[] = [\n",
+              "end": "\n];",
+              "format": "tsPool",
+              "pool": "strings"
+            },
+            {
+              "id": "irises-web.voice.punct",
+              "soul": "punct",
+              "tag": "voice",
+              "start": "export const PUNCT_RUNS: readonly string[] = [\n",
+              "end": "\n];",
+              "format": "tsPool",
+              "pool": "strings"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
