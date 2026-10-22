@@ -227,3 +227,116 @@ If 2 or 3 fails a threshold, run one automatic revision pass of the soul on that
 - **Questionnaire:** one card at a time showing the quote, the trait in a few words, and four buttons. No intro text.
 - **Errors** sit inline, short, and next to the thing that's wrong.
 - **No marketing copy, tooltips or "what is this" panels.**
+
+---
+
+## 9. Revision 2 (after the first build). This overrides earlier sections where they conflict.
+
+### 9.1 Review of the current build
+Working and kept: the parser, the stats, the slot adapter with its byte-identical round-trip, the pack renderer, the lints, the vendored try-out, the fidelity scoring, and BYOK. 122 tests pass and `tsc` is clean.
+Gaps this revision fixes:
+1. The prompts were shallow: no probes, no length budgets, and nothing to keep different models equally thorough. **They have been rewritten** (`prompts/phase1.md`, `phase1-merge.md`, `phase2.md`, `phase3a.md`, `phase3b.md`, new `phase3m.md`). The prompt files are the spec, so don't simplify them.
+2. Phase 1 was handed raw 1,200-message chunks in one shot. Now it's agentic (§9.2).
+3. There was no memory layer. That's now Phase 3m (§9.3).
+4. `assertEvidence` throws on the first quote that misses, so one bad quote kills the whole chat. Instead, drop the bad finding, and fail only if less than 80% of the quotes check out.
+5. `complete()` throws usage data away. The token meter needs it (§9.4).
+
+### 9.2 Agentic Phase 1 (context management)
+- New `src/lib/agent/loop.ts`: an OpenRouter tool-calling loop (`tools`, `tool_choice: auto`). It runs until the model returns text without tool calls, or until 80 calls, after which it forces a write. The tools run server-side over the pseudonymized messages of that chat, which the server holds per job in memory (they're sent once; the job is dropped when it ends).
+- Tools are the six named in `phase1.md`: `search`, `read`, `count`, `stats`, `verify`, `note`. Each result is limited to about 1,500 tokens. `search` supports regex, the `sender` filter, an id range, `limit` (default 20), `context` (default 2), and gives the total count.
+- **Context policy:** keep the system prompt, the initial pack, every `note` and the last 6 tool results verbatim. Replace older tool results with a one-line stub (`[trimmed: search "maaf|sorry" → 14 hits]`).
+- Initial user pack: the subject, the relationship, `stats.json`, an **episode map** (split at gaps of 6h or more; per episode the id range, date, message count, top 5 words of the subject), and a **skim** of about 300 messages. The skim is stratified across the episodes, weighted toward high-emotion messages (caps, `!!`, `??`, laugh tokens, long messages, a slow reply after a fast run).
+- Chunking only exists as a fallback for models without tool use. Merging then uses `phase1-merge.md`.
+- Validation: the parser checks the 11 headings, every probe id per section, and the line shapes for findings, life facts and exemplars (exactly 24). Word ranges are measured. If a section comes in under 70% of its minimum *and* has no Gaps entry, or a probe has no receipt, do **one** repair turn in the same conversation that lists exactly what's missing.
+
+### 9.3 Phase 3m: memory forge (new step between 3a and 3b)
+- Prompt: `prompts/phase3m.md`. Input: report §4, §5, §7, §8 and §10, plus the answers. Output: `MEMORY.md` (Spine, 20–32 Fragments, Boundaries, Key).
+- Code checks:
+  - fragment line shape and counts per kind
+  - every `facts` slug exists in report §10 with `status: agreed`
+  - no digits, em dashes or colons inside `text`
+  - no third-party names: check against the participant names seen during parsing
+  - no 5-gram overlap with the fence sections
+- **Contradiction check:** one cheap model call lists any pairs of fragments, or fragments and spine lines, that contradict each other or the drives. If it finds any, the forge gets one repair turn.
+- `MEMORY.md` goes into the pack and is passed to 3b. The 3b prompt puts the spine plus 8–14 fragments (Irises) and 5–8 fragments (IrisesWeb) into the persona slots. Targets stay untouched: memory lives inside the persona text, so no new files are needed.
+- The questionnaire gains a `trait-fact-*` item for each sensitive fact, already in `phase3a.md`.
+
+### 9.4 Token meter
+- `complete()` and the agent loop return `usage` (`prompt_tokens`, `completion_tokens`, cached tokens if the provider reports them). Pass `usage: { include: true }` so OpenRouter also returns the cost. Every API route sends `usage` back with its result.
+- **Try room:** under each reply, a small mono line `↑ 9,412 · ↓ 186` (input · output). There's a running session total in the corner. It's a number only, with no label text, following §8.
+- **Before Try sends anything,** count the composer's input locally with a rough estimate (`chars / 3.6`, or `js-tiktoken` `o200k_base` if added). Show it greyed out in the send button's corner and replace it with the real number when the reply arrives.
+- **Build run:** each Phase 1 lane shows its running token total as the agent works (stream per-call usage through the job's progress events). Phases 2 and 3 show one total each. The result page shows the total for the whole build, plus cost if OpenRouter returned it.
+- Before Run: an estimate per chat (`transcript tokens × 0.35 + 40k` for the agentic budget) beside each chat card, so the user sees the cost before spending it.
+
+### 9.5 Updated milestones
+| # | Deliverable | Done when |
+|---|---|---|
+| R1 | Agent loop + tools + context policy + episode map/skim | one real chat of 10k+ messages finishes; every quote verifies; the context never goes over the model's window |
+| R2 | Phase 1/2 validators for the new formats + repair turn | the same chat run on two different models gives section lengths within ±25% of each other |
+| R3 | Phase 3m + checks | the fragments pass every check; the contradiction pass finds none |
+| R4 | 3b with memory + budgets in the lints | slot budgets enforced; the pack drops into both repos |
+| R5 | Token meter (try, build, estimate) | the numbers match OpenRouter's activity page within 2% |
+
+---
+
+## 10. Revision 3: Phase 3 edits Iris, and the questionnaire covers names and memory. This overrides §5 Phase 3 and §9.3 where they conflict.
+
+### 10.1 Phase 3 flow (token-lean)
+```
+3a traits (LLM, small) ─┐
+fixed questions (code) ──┼─> screen A: identity + traits
+3m forge (LLM) ──────────┴─> screen B: memory review ─> 3m RECONCILE (only if custom added)
+                                                      └─> BRIEF (code) ─> 3b editor (LLM) ─> apply (code) ─> lints ─> pack
+```
+- **3a and 3m run in parallel** once Phase 2 is done. 3a only writes trait items. The fixed items come from code (`FIXED_ITEMS`), so the model never spends tokens on them.
+- **The BRIEF is built by code**, not an LLM. It takes the report sections 4–9 plus the kept memory plus the answers, and drops the ledger, inheritance and contradiction prose (about 60% of the report). Phase 3b never sees the full report.
+- **3b receives the base by tier** (see below). Locked paragraphs go in only as a one-line summary. 3b returns an edit list, not the prompt.
+- **Typical token cost of 3b:** about 25–30k in (persona and tune paragraphs in full, plus the BRIEF) and 5–8k out. The old composer took about 70k in and 25k out.
+
+### 10.2 Base tiers (extend `adapters/slots.json`, still read-only on the targets)
+- Split each prose slot into paragraphs (blank-line separated, the way the renderer keeps them). Assign ids `I.P01…` and `W.P01…`, and tag each one as `persona` (identity or voice: full text, freely editable), `tune` (behaviour the machinery depends on: full text, sentence-level `edit` only, at most half its sentences), or `locked` (machinery: summary only, never touched).
+- Store the tier, a one-line summary, and the `twin` (the matching web paragraph) per paragraph in `adapters/tiers.json`. This is written once by hand or by one strong-model pass, then reviewed. Regenerate only when the vendored SHA changes.
+- First-pass tiering of Irises `PERSONA_BLOCK` (paragraph numbers from the vendored file):
+  - `persona`: identity/bio P3, the jester P4, voice P31–P49
+  - `tune`: P5–P8 (axiom, how a joke is made, distance), P10–P30 (turn kinds, reading people, mirroring, testing, opinions, being told she's wrong, insults)
+  - `locked`: the precedence line P2, the turn-kinds header P9, invisible machinery P50
+  - In `Context.md`, the voice slots are `persona`, and the banter anchor line is `locked`.
+  - IrisesWeb `PERSONA`: the bio, tastes and mood paragraphs are `persona`; read-them-first, the turn kinds, probing and hooks are `tune`.
+
+### 10.3 Edit applier (`src/lib/soul/edits.ts`)
+- Parse the `@@ <id> <op>` blocks. Reject an edit (and send it back in the one repair turn) when it targets a locked id, uses replace/delete on a tune paragraph, has a `-` line that doesn't match a sentence exactly, changes more than half of a tune paragraph's sentences, or uses an unknown id.
+- Apply in this order: edits, then replaces, then deletes, then `after` inserts (in document order). Then render through the existing slot adapter, so locked bytes stay byte-identical. **Test:** an empty edit list gives Iris byte-identical.
+- **Residue check after applying:** scan the result for Iris's own facts (a list in `adapters/iris-residue.json`: twenty-one, Jakarta, olympiad, SaaS, david, succulent, matcha, IELTS…). Any hit that isn't in the BRIEF's spine becomes a repair-turn issue.
+- Then run the existing lints and length budgets (the budgets from the old `phase3b.md` table). There's at most **one** repair turn, which sends only the failing ids and the reasons, never the whole base again.
+
+### 10.4 Questionnaire, now two screens
+**Screen A: identity and traits** (one card at a time, §8 rules)
+- `name`: a text field prefilled with `Iris`, with chips for the subject's display name(s) from the chats. Whatever is typed is used, and it goes into the BRIEF.
+- `nicknames`: a chip input prefilled with nicknames found in the chats (the Phase 1 lexicon, plus any vocatives aimed at the subject). Add or remove freely.
+- `rename`: Yes or No. Yes swaps "Irises" for the name in the rendered machinery copies (drift anchor heading etc.), done by code.
+- `relationship`, `language`, `life_facts` and `energy`: as before.
+- The trait items from 3a.
+
+**Screen B: memory** (shown after 3m; the layout does the explaining)
+- Spine lines at the top, as editable lines.
+- Fragments as cards grouped by `kind`. Each card shows its text, with three icon toggles: keep (default) / remove / pin (★, always goes into the soul). Click the text to edit it inline; an edited card counts as custom.
+- An empty card at the end of the list: type a custom memory and press Enter to add it.
+- Boundaries shown as lines you can remove or add to.
+- No intro text.
+- On confirm: if nothing custom or edited was added, there's **no LLM call**; code writes `MEMORY.md` directly. Otherwise call 3m in `RECONCILE` mode with the reviewed file plus the custom texts (cheap model, small output), and show its `## Changed` lines briefly inline before continuing.
+- Removed fragments are removed for good. They never reach the BRIEF.
+
+### 10.5 Token discipline (all phases)
+- **Prompt caching:** the system prompts are static. Put them first and turn on caching where the model supports it (Anthropic `cache_control` through OpenRouter; Gemini and DeepSeek cache automatically). In the agent loop, the system prompt and the initial pack are the cached prefix, and every turn appends to them.
+- Phase 2 gets each engram **minus** its sections 2 (raw surface) and 10's `specific` exemplars. Code passes merged stats instead.
+- Phase 3 never sends the raw chats or the full engrams.
+- Every step's input and output sizes are logged against the meter in §9.4. Set alerts in tests: Phase 3b input above 35k tokens fails the test.
+
+### 10.6 Milestones
+| # | Deliverable | Done when |
+|---|---|---|
+| T1 | `tiers.json` + paragraph splitter + edit applier | an empty edit list round-trips byte-identical; bad edits are rejected with reasons |
+| T2 | BRIEF builder + 3b wired to edits + residue check | a pack built from the fixture report has no Iris residue and passes the lints |
+| T3 | Screen A (name, nicknames, traits) | the typed name appears in the soul and, with rename, in the machinery copies |
+| T4 | Screen B + reconcile | keep, remove, pin and custom all reach the soul; no LLM call when there's no custom memory |
+| T5 | Token budget tests | 3b in ≤ 35k and out ≤ 9k on the fixture |

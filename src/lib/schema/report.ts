@@ -13,6 +13,7 @@ export const REPORT_SECTIONS = [
   'Light and shadow',
   'Novel situations',
   'Exemplar pool',
+  'Life facts',
   'Questionnaire candidates',
 ] as const;
 
@@ -82,9 +83,9 @@ function parseLedger(block: string): LedgerRow[] {
   return block
     .split('\n')
     .map(line => line.trim())
-    .filter(line => /^[-*]\s/.test(line))
+    .filter(line => /^[-*]\s+`?id`?\s*[:=]/i.test(line))
     .map(line => {
-      const fields = labelledFields(line, ['id', 'trait', 'supporting', 'contradicting', 'confidence']);
+      const fields = labelledFields(line, ['id', 'trait', 'layer', 'supporting', 'contradicting', 'class', 'confidence']);
       const id = clean(fields.id);
       const trait = clean(fields.trait);
       const confidence = clean(fields.confidence).toLowerCase();
@@ -115,9 +116,9 @@ function parseDrives(block: string): Drive[] {
   const rows = block
     .split(/\n(?=[-*]\s)/)
     .map(chunk => chunk.trim())
-    .filter(chunk => /^[-*]\s/.test(chunk));
+    .filter(chunk => /^[-*]\s+`?id`?\s*[:=]/i.test(chunk));
   return rows.map(row => {
-    const line = row.replace(/\s+/g, ' ');
+    const line = row.split('\n')[0].replace(/\s+/g, ' ');
     const fields = labelledFields(line, ['id', 'drive', 'sources']);
     const id = clean(fields.id);
     const drive = clean(fields.drive);

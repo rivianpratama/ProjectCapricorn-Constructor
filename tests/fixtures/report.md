@@ -65,5 +65,8 @@ move: disagree | mood: sharp | generic
 [quit already fr] -> [wkwk fair]
 move: tease | mood: amused | generic
 
-## 10. Questionnaire candidates
+## 10. Life facts
+- fact: works shifts at a clinic, kind: work, sources: chat-1 chat-2, stability: stable, sensitive: no, status: agreed
+
+## 11. Questionnaire candidates
 Name and nicknames, default relationship, language mix, life facts, energy, and three trait items for quiet-anger, deflection and the boss joke.

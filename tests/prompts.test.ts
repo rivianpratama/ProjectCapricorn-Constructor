@@ -62,11 +62,9 @@ describe('phase 2 prompt', () => {
 describe('phase 3a prompt', () => {
   const text = read('phase3a');
 
-  it('names the fixed items and the four trait options', () => {
-    for (const id of ['name', 'nicknames', 'relationship', 'language', 'life_facts', 'energy', 'rename']) {
-      expect(text).toContain('`' + id + '`');
-    }
-    expect(text).toContain('Keep, Soften, Only once close, Remove');
+  it('asks only trait items, with the four options', () => {
+    expect(text).toContain('Code adds the fixed questions');
+    expect(text).toContain('"Keep", "Soften", "Only once close", "Remove"');
   });
 
   it('keeps the always-on subjects out', () => {
@@ -79,23 +77,48 @@ describe('phase 3b prompt', () => {
   const text = read('phase3b');
 
   it('preserves the machinery and the anchor headings', () => {
-    for (const phrase of ['precedence', 'four turn kinds', 'mood and mask', 'AI', '## Who is typing, in every lane', '## Who you are', '## How you write']) {
+    for (const phrase of ['locked', 'tune', 'persona', 'twin', 'AI', '@@ pools', 'Never target a `locked` id']) {
       expect(text).toContain(phrase);
     }
   });
 
   it('carries the prose bans', () => {
     expect(text).toContain('Behaviour, not adjectives');
-    expect(text).toContain('No em dashes');
+    expect(text).toContain('No em or en dashes');
     expect(text).toContain('however');
   });
 
-  it('names every slot in output order', () => {
-    let cursor = 0;
-    for (const slot of ['iris.persona', 'iris.how', 'iris.language', 'iris.banter', 'web.persona', 'web.how', 'samples', 'stretch', 'punct']) {
-      const at = text.indexOf('`' + slot + '`', cursor);
-      expect(at, slot).toBeGreaterThan(-1);
-      cursor = at;
+  it('edits Iris instead of writing from scratch', () => {
+    expect(text).toContain("don't write a prompt from scratch");
+    for (const op of ['replace', 'edit', 'delete', 'after']) expect(text).toMatch(new RegExp(`@@ I\\.P\\d+ ${op}`));
+  });
+});
+
+describe('phase 3m prompt', () => {
+  const text = read('phase3m');
+
+  it('grounds fragments in agreed facts and keeps them compatible', () => {
+    for (const phrase of ['Grounded', 'Compatible', 'agreed', 'Consistency pass', '## Spine', '## Fragments', '## Boundaries']) {
+      expect(text).toContain(phrase);
     }
+  });
+
+  it('never carries real names or fenced material', () => {
+    expect(text).toContain('no real names');
+    expect(text).toContain('overfit fence');
+  });
+});
+
+describe('phase 1 prompt is agentic and budgeted', () => {
+  const text = read('phase1');
+
+  it('names the tools and the passes', () => {
+    for (const tool of ['search(', 'read(', 'count(', 'stats(', 'verify(', 'note(']) expect(text).toContain(tool);
+    expect(text).toContain('Disconfirm');
+  });
+
+  it('gives every section a word budget', () => {
+    const sections = text.split(/^## \d+\. /m).slice(1);
+    for (const body of sections.slice(0, 9)) expect(body).toMatch(/\d[\d,]* to [\d,]+ words/);
   });
 });
