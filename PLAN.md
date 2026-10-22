@@ -340,3 +340,22 @@ fixed questions (code) ──┼─> screen A: identity + traits
 | T3 | Screen A (name, nicknames, traits) | the typed name appears in the soul and, with rename, in the machinery copies |
 | T4 | Screen B + reconcile | keep, remove, pin and custom all reach the soul; no LLM call when there's no custom memory |
 | T5 | Token budget tests | 3b in ≤ 35k and out ≤ 9k on the fixture |
+
+---
+
+## 11. TryRoom parity with IrisesWeb (do 1–4; skip cutOff, lastCredit and pending)
+
+Goal: TryRoom runs the **real IrisesWeb turn loop**, so it tests the soul's behaviour, not just its wording. Rule: **import the vendored modules, don't re-port them.** `vendor/irises-web/@<sha>/src/shared/{affect,compile,burst,envelope,clock,wheel}.ts` and `worker/prompt/tail.ts` hold the logic. Where an import can't take the pack's pools, wrap it; never retype a rule.
+
+1. **State loop.** TryRoom keeps a `TryState`, the same shape IrisesWeb's page keeps: affect state, `hookTrail`, quiet strikes, turn count. Each `/api/try` call sends the state and gets back `{bubbles, status, state}`. The route parses `status` (`mood_label`, `mood_shift`, `hook_kind`, `meta_prompt`) with the vendored envelope reader, advances the state with `advanceAffect`, pushes `hook_kind` onto `hookTrail`, and compiles the next turn's `directiveLines` / `looseness` / `bubbleCap` with the vendored `compile.ts`. Nothing is pinned any more.
+2. **Bursts.** Each Enter adds a message to a pending run. Sending waits for the same quiet window IrisesWeb uses (`burst.ts`), then sends the run as `[msg N]` lines. Use the vendored `runLength` so `## Their message came in pieces` renders.
+3. **Quiet and careful.** `quietForced` comes from the strike counter, the way IrisesWeb computes it. `safety` comes from the same signal IrisesWeb uses (status field or classifier, whichever the vendored code reads). Both drift laws become reachable.
+4. **Show the state, quietly (§8).** A thin strip above the input: mood label, a mood-shift arrow, the last three hook kinds as small chips, and the bubble cap as dots. Next to each reply, the token line from §9.4. No captions.
+
+**Tests** (`tests/tryloop.test.ts`), run against the vendored tail:
+- For a fixed state and input, the route's tail is byte-equal to the vendored `tail.ts` output.
+- Three idle turns push `quietForced` to true and the quiet anchor renders.
+- A three-message run renders the pieces block.
+- `hook_kind` repeats come through the trail into the next tail.
+
+**Done when** the four tests pass and one scripted five-turn conversation yields the same tail sequence as IrisesWeb's own page code given the same model replies.

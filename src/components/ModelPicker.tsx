@@ -13,6 +13,7 @@ export interface ModelInfo {
 interface Props {
   id: string;
   label: string;
+  hint?: string;
   value: string;
   fallback: string;
   models: ModelInfo[];
@@ -35,7 +36,7 @@ function ctx(tokens: number): string {
 }
 
 /** Searchable OpenRouter model combobox. Any `vendor/model` id can be typed, so new models work before the list shows them. */
-export function ModelPicker({ id, label, value, fallback, models, loading, disabled, onChange }: Props) {
+export function ModelPicker({ id, label, hint, value, fallback, models, loading, disabled, onChange }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [hi, setHi] = useState(0);
@@ -136,6 +137,7 @@ export function ModelPicker({ id, label, value, fallback, models, loading, disab
           </div>
         ) : null}
       </div>
+      {hint ? <span className="hint">{hint}</span> : null}
       {value ? (
         <button type="button" className="small ghost" style={{ alignSelf: 'flex-start' }} onClick={() => onChange('')}>
           Reset to default

@@ -5,6 +5,7 @@ import { analyse, chunkMessages, heldOutPairs, pseudonymise, splitHoldout } from
 import type { ChatStats, HeldOutPair } from '../lib/chats/types';
 import { api, keyStore, packStore } from '../lib/client/api';
 import { useModels } from '../lib/client/useModels';
+import { estimateCost, estimateRun, formatCost, formatTokens } from '../lib/client/estimate';
 import { draftFromFile, draftMessages, type Draft } from '../lib/client/drafts';
 import type { Questionnaire } from '../lib/schema/questionnaire';
 import type { PackFile } from '../lib/soul/pack';
@@ -295,6 +296,15 @@ export function Workbench() {
     URL.revokeObjectURL(url);
   }, [result]);
 
+  const estimate = useMemo(
+    () => (drafts.length && stage === 'chats' ? estimateRun(drafts.map(draftMessages)) : null),
+    [drafts, stage],
+  );
+  const { models, defaults, choice } = modelState;
+  const price = (id: string) => models.find(model => model.id === id);
+  const cost = estimate
+    ? estimateCost(estimate, price(choice.cheap || defaults.cheap), price(choice.strong || defaults.strong))
+    : null;
   const needsKey = !key;
   const files = result?.files ?? [];
   const current = files[Math.min(fileIndex, Math.max(0, files.length - 1))];
@@ -350,6 +360,15 @@ export function Workbench() {
                 </label>
               </div>
             </section>
+          ) : null}
+
+          {estimate ? (
+            <div className="estimate">
+              <b>{cost === null ? '—' : `~${formatCost(cost)}`}</b>
+              <span>
+                {formatTokens(estimate.bulk.input + estimate.strong.input)} in · {formatTokens(estimate.bulk.output + estimate.strong.output)} out
+              </span>
+            </div>
           ) : null}
 
           <div className="actions">

@@ -1,8 +1,9 @@
 'use client';
 
-import { useRef } from 'react';
+import { useMemo, useRef } from 'react';
 import type { Draft } from '../lib/client/drafts';
-import { RELATIONSHIPS, participantCount, rangeDates } from '../lib/client/drafts';
+import { RELATIONSHIPS, draftMessages, participantCount, rangeDates } from '../lib/client/drafts';
+import { formatTokens, messageTokens } from '../lib/client/estimate';
 
 interface Props {
   draft: Draft;
@@ -14,6 +15,8 @@ interface Props {
 
 export function ChatCard({ draft, index, onChange, onRemove, locked }: Props) {
   const dates = rangeDates(draft);
+  const sent = useMemo(() => draftMessages(draft), [draft.messages, draft.from, draft.to]);
+  const tokens = useMemo(() => messageTokens(sent), [sent]);
   return (
     <div className="chatcard">
       <div className="top">
@@ -22,7 +25,7 @@ export function ChatCard({ draft, index, onChange, onRemove, locked }: Props) {
           <b title={draft.fileName}>{draft.fileName}</b>
         </div>
         <div className="row" style={{ flexWrap: 'nowrap' }}>
-          <span className="count">{draft.messages.length.toLocaleString()} msgs</span>
+          <span className="count">{sent.length.toLocaleString()} msgs · {formatTokens(tokens)} tokens</span>
           <button className="small ghost close" onClick={onRemove} disabled={locked} aria-label={`Remove ${draft.fileName}`}>✕</button>
         </div>
       </div>

@@ -114,6 +114,7 @@ export function ModelsPanel({
         <ModelPicker
           id="model-cheap"
           label="Bulk"
+          hint="Reads your chats. Many calls, so pick cheap and fast."
           value={choice.cheap}
           fallback={defaults.cheap}
           models={models}
@@ -126,6 +127,7 @@ export function ModelsPanel({
       <ModelPicker
         id="model-strong"
         label={only ? 'Model' : 'Synthesis'}
+        hint={only ? undefined : 'Writes the persona. A few calls, so pick smart.'}
         value={choice.strong}
         fallback={defaults.strong}
         models={models}
