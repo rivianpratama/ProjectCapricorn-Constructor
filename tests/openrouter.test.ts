@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { complete, completeDetailed, completeLongForm, fitMessages, reasoningFor, requestCompletion } from '../src/lib/openrouter';
+import { complete, completeDetailed, completeLongForm, fitMessages, reasoningFloor, reasoningFor, requestCompletion } from '../src/lib/openrouter';
 
 const original = globalThis.fetch;
 const asks = [{ role: 'user' as const, content: 'hello' }];
@@ -138,6 +138,29 @@ describe('reasoningFor', () => {
       throw new Error('offline');
     }) as typeof fetch;
     await expect(reasoningFor('openai/gpt-5')).resolves.toBeUndefined();
+  });
+});
+
+describe('reasoningFloor', () => {
+  function catalogue(data: unknown[]): void {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ data }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch;
+  }
+
+  it('switches reasoning off where the model allows it, since DeepSeek folds minimal into high', async () => {
+    catalogue([
+      {
+        id: 'deepseek/deepseek-v4-flash',
+        context_length: 1_000_000,
+        reasoning: { default_enabled: true, supported_efforts: ['max', 'high', 'low', 'none'] },
+      },
+      { id: 'openai/gpt-5', context_length: 400_000, reasoning: { mandatory: true, supported_efforts: ['high', 'medium', 'low', 'minimal'] } },
+      { id: 'google/gemini-2.5-pro', context_length: 1_000_000, reasoning: { mandatory: true, supported_efforts: ['high', 'low'] } },
+    ]);
+    await expect(reasoningFloor('deepseek/deepseek-v4-flash')).resolves.toEqual({ effort: 'none' });
+    await expect(reasoningFloor('openai/gpt-5')).resolves.toEqual({ effort: 'minimal' });
+    await expect(reasoningFloor('google/gemini-2.5-pro')).resolves.toEqual({ effort: 'low' });
+    await expect(reasoningFloor('unknown/model')).resolves.toEqual({ effort: 'minimal' });
   });
 });
 

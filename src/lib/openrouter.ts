@@ -151,6 +151,25 @@ export async function reasoningFor(model: string): Promise<ReasoningOptions | un
   }
 }
 
+/**
+ * The least reasoning a model will actually accept, for the retry after reasoning ate the budget.
+ * 'minimal' is not in every model's vocabulary (DeepSeek offers max/high/low/none and folds the
+ * rest into high), so a blind 'minimal' can leave the model thinking just as hard. A model that
+ * does not require reasoning is switched off; one that does gets its smallest listed effort.
+ */
+export async function reasoningFloor(model: string): Promise<ReasoningOptions> {
+  try {
+    const meta = (await listModels()).find(entry => entry.id === model)?.reasoning;
+    const supported = meta?.supported_efforts ?? [];
+    if (meta && !meta.mandatory && supported.includes('none')) return { effort: 'none' };
+    const floor = (['minimal', 'low', 'medium'] as ReasoningEffort[]).find(value => supported.includes(value));
+    if (floor) return { effort: floor };
+  } catch (error) {
+    log.warn('could not read model reasoning metadata', { model, error });
+  }
+  return { effort: 'minimal' };
+}
+
 export function keyFrom(request: Request): string {
   const key = request.headers.get('x-openrouter-key')?.trim();
   if (!key) throw new HttpError(401, 'missing key');
@@ -414,8 +433,9 @@ export async function completeLongForm(options: CompletionOptions): Promise<Deta
   let result = await requestCompletion({ ...options, reasoning });
   if (result.empty?.retryable) {
     try {
-      log.info('retrying at minimal reasoning', { model: options.model ?? MODELS.strong, why: result.empty.reason });
-      result = await requestCompletion({ ...options, reasoning: { effort: 'minimal' }, temperature: 0.2 });
+      const floor = await reasoningFloor(options.model ?? MODELS.strong);
+      log.info('retrying at minimal reasoning', { model: options.model ?? MODELS.strong, effort: floor.effort, why: result.empty.reason });
+      result = await requestCompletion({ ...options, reasoning: floor, temperature: 0.2 });
     } catch (retryError) {
       // Keep the first result: it carries the useful diagnosis. The retry's own failure is worth a line.
       log.warn('minimal-reasoning retry failed', { model: options.model ?? MODELS.strong, error: retryError });
@@ -425,7 +445,7 @@ export async function completeLongForm(options: CompletionOptions): Promise<Deta
       log.info('retrying a cut-off answer', { model: options.model ?? MODELS.strong, why: result.truncated.reason });
       const retried = await requestCompletion({
         ...options,
-        reasoning: reasoning ? { ...reasoning, effort: 'minimal' } : undefined,
+        reasoning: reasoning ? await reasoningFloor(options.model ?? MODELS.strong) : undefined,
         temperature: 0.2,
       });
       // Only the retry's diagnosis matters, never the original: that one was cut off by design.
