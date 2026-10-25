@@ -60,19 +60,25 @@ async function handle(request: Request): Promise<Response> {
     // A soul that will not parse or build is one emit block away from right, and a 24k-token
     // generation is too expensive to throw away over a heading or a fence.
     for (let attempt = 0; attempt < 2 && built.problem.length > 0; attempt++) {
+      // The previous soul rides along only when it parsed: then "change only what these demand" has
+      // something to change. A reply that was not a soul at all is better left out than echoed back.
       const repair = [
         user,
+        ...(built.pack ? ['', '## Your previous soul', markdown] : []),
         '',
         '## Fix these before answering again',
         ...built.problem.map(problem => `- ${problem}`),
         '',
-        'Rewrite the whole soul, changing only what these demand.',
+        built.pack
+          ? 'Rewrite the whole soul, changing only what these demand.'
+          : 'Answer with the whole SOUL.md: one H2 per slot, in order, and nothing else.',
       ].join('\n');
       markdown = await compose(key, models, system, repair);
       built = build(markdown, body);
     }
     if (built.problem.length) throw new HttpError(502, `${built.problem[0]} (after two attempts)`);
-    const { pack } = built;
+    const pack = built.pack;
+    if (!pack) throw new HttpError(502, 'the soul did not build');
 
     return Response.json({
       markdown,
@@ -121,12 +127,12 @@ async function compose(key: string, models: Models, system: string, user: string
  * Parse, build, and collect what is wrong: a thrown parse error, a lint issue or a pool issue.
  * Empty means the pack is usable.
  */
-function build(markdown: string, body: Body): { pack: ReturnType<typeof buildPack>; problem: string[] } {
+function build(markdown: string, body: Body): { pack: ReturnType<typeof buildPack> | null; problem: string[] } {
   let pack: ReturnType<typeof buildPack>;
   try {
     pack = buildPack(parseSoul(markdown), markdown, { n: body.n, report: body.report });
   } catch (error) {
-    return { pack: null as unknown as ReturnType<typeof buildPack>, problem: [error instanceof Error ? error.message : 'the soul did not parse'] };
+    return { pack: null, problem: [error instanceof Error ? error.message : 'the soul did not parse'] };
   }
   const problem = [
     ...pack.issues.map(issue => `${issue.slot}: ${issue.rule} (${issue.detail})`),

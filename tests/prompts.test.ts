@@ -73,8 +73,27 @@ describe('phase 3a prompt', () => {
   });
 });
 
-describe('phase 3b prompt', () => {
+describe('phase 3b composer prompt', () => {
   const text = read('phase3b');
+
+  it('asks for the SOUL.md the compose route parses, never an edit list', () => {
+    expect(text).not.toContain('@@');
+    for (const slot of ['iris.persona', 'iris.how', 'iris.language', 'iris.banter', 'web.persona', 'web.how', 'samples', 'stretch', 'punct']) {
+      expect(text).toContain(`\`${slot}\``);
+    }
+    expect(text).toContain('## Changelog');
+  });
+
+  it('keeps the heading anchors the slot adapter relies on', () => {
+    for (const anchor of ['## Who is typing, in every lane', '## How you write (strict, this matters)', '## Language', '**Banter — the play frame.**', '## Who you are']) {
+      expect(text).toContain(anchor);
+    }
+  });
+});
+
+// Not wired to a route yet: it needs the edit applier and tiers.json from PLAN section 10.
+describe('phase 3b editor prompt', () => {
+  const text = read('phase3b-editor');
 
   it('preserves the machinery and the anchor headings', () => {
     for (const phrase of ['locked', 'tune', 'persona', 'twin', 'AI', '@@ pools', 'Never target a `locked` id']) {
