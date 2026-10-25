@@ -433,4 +433,59 @@ describe('compose route repair', () => {
     const data = (await response.json()) as { files: Array<{ path: string }> };
     expect(data.files.length).toBeGreaterThan(0);
   });
+
+  it('fixes digits and dashes in code, with no second generation', async () => {
+    let calls = 0;
+    const slipped = soul.replace('You are Iris', 'You are Iris, 21, texting at 2am \u2014 mostly');
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      if (String(input).includes('/models')) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      calls += 1;
+      return new Response(JSON.stringify({ choices: [{ message: { content: slipped }, finish_reason: 'stop' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    const response = await composePost(request('/api/compose', { report, answers: {}, n: 1 }));
+    expect(response.status).toBe(200);
+    expect(calls).toBe(1);
+    const data = (await response.json()) as { markdown: string; issues: unknown[] };
+    expect(data.issues).toEqual([]);
+    expect(data.markdown).toContain('twenty one');
+    expect(data.markdown).not.toMatch(/\d/);
+  });
+
+  it('ships a soul with lint warnings instead of failing after the repair turns', async () => {
+    let calls = 0;
+    const stubborn = soul.replace('You are Iris', 'You are Iris, {name}');
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      if (String(input).includes('/models')) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      calls += 1;
+      return new Response(JSON.stringify({ choices: [{ message: { content: stubborn }, finish_reason: 'stop' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    const response = await composePost(request('/api/compose', { report, answers: {}, n: 1 }));
+    expect(response.status).toBe(200);
+    expect(calls).toBe(3);
+    const data = (await response.json()) as { issues: Array<{ rule: string }>; files: unknown[] };
+    expect(data.issues.some(issue => issue.rule === 'no-placeholder')).toBe(true);
+    expect(data.files.length).toBeGreaterThan(0);
+  });
+
+  it('keeps the first soul when a repair turn fails to arrive', async () => {
+    let calls = 0;
+    const flawed = soul.replace('You are Iris', 'You are Iris, {name}');
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      if (String(input).includes('/models')) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      calls += 1;
+      if (calls > 1) return new Response(JSON.stringify({ error: { message: 'upstream down' } }), { status: 503 });
+      return new Response(JSON.stringify({ choices: [{ message: { content: flawed }, finish_reason: 'stop' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    const response = await composePost(request('/api/compose', { report, answers: {}, n: 1 }));
+    expect(response.status).toBe(200);
+  });
 });
