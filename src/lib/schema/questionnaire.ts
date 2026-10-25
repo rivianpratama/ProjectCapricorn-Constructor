@@ -3,16 +3,17 @@ import { z } from 'zod';
 export const TRAIT_OPTIONS = ['Keep', 'Soften', 'Only once close', 'Remove'] as const;
 
 export const FIXED_ITEMS = {
-  name: { options: ['Iris', 'Keep the name from the chats', 'Use a new name'], default: 'Iris' },
-  nicknames: { options: ['From the chats', 'None', 'I will type one'], default: 'From the chats' },
+  name: { text: 'What should she be called?', options: ['Iris', 'Keep the name from the chats', 'Use a new name'], default: 'Iris' },
+  nicknames: { text: 'Nicknames?', options: ['From the chats', 'None', 'I will type one'], default: 'From the chats' },
   relationship: {
+    text: 'Who is she to you?',
     options: ['Close friend', 'Partner', 'Family', 'Work', 'Group', 'Acquaintance'],
     default: 'Close friend',
   },
-  language: { options: ['Mostly English', 'Mixed', 'Mostly Indonesian'], default: 'Mixed' },
-  life_facts: { options: ['Generalize', 'Fictionalize'], default: 'Generalize' },
-  energy: { options: ['As observed', 'Brighter', 'Calmer'], default: 'As observed' },
-  rename: { options: ['Yes', 'No'], default: 'No' },
+  language: { text: 'Which language?', options: ['Mostly English', 'Mixed', 'Mostly Indonesian'], default: 'Mixed' },
+  life_facts: { text: 'Real life details?', options: ['Generalize', 'Fictionalize'], default: 'Generalize' },
+  energy: { text: 'How much energy?', options: ['As observed', 'Brighter', 'Calmer'], default: 'As observed' },
+  rename: { text: 'Rename Irises in the files too?', options: ['Yes', 'No'], default: 'No' },
 } as const;
 
 export const FIXED_IDS = Object.keys(FIXED_ITEMS) as Array<keyof typeof FIXED_ITEMS>;
@@ -67,4 +68,31 @@ export function parseQuestionnaire(value: unknown): Questionnaire {
 /** Answers keyed by item id, defaulted to each item's own default. */
 export function defaultAnswers(questionnaire: Questionnaire): Record<string, string> {
   return Object.fromEntries(questionnaire.items.map(item => [item.id, item.default]));
+}
+
+/** The seven fixed questions, written by code so the model never spends tokens on them. */
+export function fixedItems(): QuestionItem[] {
+  return FIXED_IDS.map(id => {
+    const spec = FIXED_ITEMS[id];
+    return { id, trait_ref: '', text: spec.text, quote: '', options: [...spec.options], default: spec.default };
+  });
+}
+
+const MAX_ITEMS = 15;
+
+/**
+ * Phase 3a writes only trait items. This keeps those, drops any fixed id the model wrote anyway,
+ * trims to the room left under the cap (life-fact items first), and puts the fixed items in front.
+ */
+export function buildQuestionnaire(value: unknown): Questionnaire {
+  const raw = (value as { items?: unknown } | null)?.items;
+  if (!Array.isArray(raw)) throw new Error('questionnaire has no items');
+  const traits = raw.filter(
+    (item): item is QuestionItem => typeof (item as QuestionItem | null)?.id === 'string' && (item as QuestionItem).id.startsWith('trait-'),
+  );
+  const room = MAX_ITEMS - FIXED_IDS.length;
+  const facts = traits.filter(item => item.id.startsWith('trait-fact-'));
+  const rest = traits.filter(item => !item.id.startsWith('trait-fact-'));
+  const keep = new Set([...facts.slice(0, room), ...rest.slice(0, Math.max(room - facts.length, 0))]);
+  return parseQuestionnaire({ items: [...fixedItems(), ...traits.filter(item => keep.has(item))] });
 }

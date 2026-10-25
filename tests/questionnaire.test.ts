@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FIXED_ITEMS,
   QuestionnaireSchema,
+  buildQuestionnaire,
   defaultAnswers,
   parseQuestionnaire,
   type QuestionItem,
@@ -92,5 +93,30 @@ describe('questionnaire schema', () => {
 
   it('exports the schema for reuse', () => {
     expect(QuestionnaireSchema.safeParse(valid).success).toBe(true);
+  });
+});
+
+describe('buildQuestionnaire', () => {
+  it('adds the fixed items in front of the model\'s trait items', () => {
+    const built = buildQuestionnaire({ items: [trait(1), trait(2), trait(3)] });
+    expect(built.items.map(item => item.id).slice(0, 7)).toEqual(Object.keys(FIXED_ITEMS));
+    expect(built.items).toHaveLength(10);
+  });
+
+  it('ignores fixed ids the model wrote itself', () => {
+    const built = buildQuestionnaire({ items: [fixed('name'), trait(1), trait(2), trait(3)] });
+    expect(built.items.filter(item => item.id === 'name')).toHaveLength(1);
+  });
+
+  it('trims to the cap, keeping life-fact items', () => {
+    const fact = { ...trait(99), id: 'trait-fact-x' };
+    const items = [...Array.from({ length: 10 }, (_, i) => trait(i)), fact];
+    const built = buildQuestionnaire({ items });
+    expect(built.items).toHaveLength(15);
+    expect(built.items.some(item => item.id === 'trait-fact-x')).toBe(true);
+  });
+
+  it('fails when too few traits come back', () => {
+    expect(() => buildQuestionnaire({ items: [trait(1)] })).toThrow();
   });
 });

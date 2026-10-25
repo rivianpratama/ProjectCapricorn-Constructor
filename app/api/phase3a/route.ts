@@ -1,7 +1,7 @@
 import { currentRequestId, log, withLogging } from '../../../src/lib/log';
 import { completeLongForm, HttpError, keyFrom, modelsFrom, parseJson } from '../../../src/lib/openrouter';
 import { prompt } from '../../../src/lib/prompts';
-import { parseQuestionnaire } from '../../../src/lib/schema/questionnaire';
+import { buildQuestionnaire } from '../../../src/lib/schema/questionnaire';
 
 export const runtime = 'nodejs';
 
@@ -37,7 +37,7 @@ async function handle(request: Request): Promise<Response> {
       })
     ).content;
 
-    const questionnaire = parseQuestionnaire(parseJson(content));
+    const questionnaire = buildQuestionnaire(parseJson(content));
     // The report's markdown carries the questions nothing depends on; the client keeps the parsed
     // report instead, so a long report does not fail a closure check over an oversized payload.
     return Response.json({ questionnaire, markdown: content.length <= MARKDOWN_LIMIT ? content : undefined });
