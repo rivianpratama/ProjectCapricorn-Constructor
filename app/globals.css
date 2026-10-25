@@ -318,6 +318,19 @@ a:hover { text-decoration-color: var(--accent); }
 .bubble { padding: 7px 12px; max-width: 46ch; border-radius: 14px; background: var(--well); border: 1px solid var(--line); }
 .bubbles.them .bubble { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 .composer { display: flex; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.tokens { font: 500 11px/1 var(--mono); color: var(--faint); padding: 2px 2px 0; }
+
+/* the state strip: the weather the turn ran on, as it was */
+.state { display: flex; align-items: center; gap: 8px; padding: 9px 16px; border-top: 1px solid var(--line); font: 500 11px/1 var(--mono); color: var(--faint); }
+.state .mood { color: var(--muted); }
+.state .shift { color: var(--muted); }
+.state .hooks { display: flex; gap: 4px; }
+.state .hook { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border: 1px solid var(--line); border-radius: 999px; font-size: 10px; letter-spacing: .04em; color: var(--muted); }
+.state .hook.off { border-style: dashed; color: var(--faint); }
+.state .caps { display: flex; gap: 3px; margin-left: auto; }
+.state .caps .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); display: inline-block; }
+.state .caps .dot.on { background: var(--ink); }
+.state + .composer { border-top: 0; }
 
 /* model picker */
 .picker { position: relative; }

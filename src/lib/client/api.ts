@@ -3,19 +3,48 @@ export interface ModelChoice {
   strong: string;
 }
 
+export interface ApiError extends Error {
+  /** The id the server logged this failure under, when the response carried one. */
+  requestId?: string;
+  status?: number;
+}
+
 export async function api<T>(path: string, key: string, body: unknown): Promise<T> {
   const models = modelStore.get();
-  const headers: Record<string, string> = { 'content-type': 'application/json', 'x-openrouter-key': key };
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    'x-openrouter-key': key,
+    'x-request-id': crypto.randomUUID().slice(0, 8),
+  };
   if (models.cheap) headers['x-openrouter-model-cheap'] = models.cheap;
   if (models.strong) headers['x-openrouter-model-strong'] = models.strong;
-  const response = await fetch(path, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body),
-  });
-  const data = (await response.json().catch(() => ({}))) as { error?: string };
-  if (!response.ok) throw new Error(data.error || 'request failed');
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+  } catch {
+    // A network-level failure never reaches the server, so this line is the only trace.
+    throw failure(path, undefined, 0, 'could not reach the server');
+  }
+  const data = (await response.json().catch(() => ({}))) as { error?: string; id?: string };
+  if (!response.ok) throw failure(path, data.id, response.status, data.error || 'request failed');
   return data as T;
+}
+
+/** One place to build and report a failed call. The key never appears here. */
+function failure(
+  path: string,
+  requestId: string | undefined,
+  status: number,
+  message: string,
+  report = true,
+): ApiError {
+  const error = Object.assign(new Error(message), { requestId, status }) as ApiError;
+  if (report) console.error(`[client] ${path} failed`, { status, requestId, message });
+  return error;
 }
 
 const KEY = 'constructinator.key';

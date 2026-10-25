@@ -69,3 +69,23 @@ describe('parseSoul', () => {
     expect(again.changelog).toEqual(soul.changelog);
   });
 });
+
+describe('parseSoul heading shapes', () => {
+  const fixture = readFileSync(join(import.meta.dirname, 'fixtures', 'soul.md'), 'utf8');
+  const baseline = parseSoul(fixture);
+
+  for (const [name, text] of [
+    ['H3 slot headings', fixture.replace(/^## /gm, '### ')],
+    ['numbered slot headings', fixture.replace(/^## (\w)/gm, '## 2. $1')],
+    ['bold slot headings', fixture.replace(/^## (.+)$/gm, '**$1**')],
+    ['a dropped dot in the slot id', fixture.replace(/^## iris\.how/gm, '## iris how')],
+  ] as const) {
+    it(`reads ${name}`, () => {
+      const soul = parseSoul(text);
+      // The persona's own text may carry its own headings; the slot's parse must still reach it.
+      expect(soul['iris.how']).toContain('Short bubbles. Lowercase.');
+      expect(soul.pools.samples).toEqual(baseline.pools.samples);
+      expect(soul.pools.stretch).toEqual(baseline.pools.stretch);
+    });
+  }
+});

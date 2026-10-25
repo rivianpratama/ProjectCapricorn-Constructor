@@ -18,13 +18,13 @@ const POOLS = new Set<SoulSlot>(['samples', 'stretch', 'punct']);
 
 export function parseSoul(markdown: string): Soul {
   const text = markdown.replace(/\r\n/g, '\n').trim();
-  const headings = [...text.matchAll(/^##[ \t]+(.+?)[ \t]*$/gm)].filter(
+  const headings = [...text.matchAll(/^[ \t]*#{2,3}[ \t]+(.+?)[ \t]*$|^[ \t]*\*\*(.+?)\*\*:?[ \t]*$/gm)].filter(
     match => !insideFence(text, match.index ?? 0),
   );
   const body: Record<string, string> = {};
 
   for (let i = 0; i < headings.length; i++) {
-    const name = headings[i][1].trim();
+    const name = slotName(headings[i][1] ?? headings[i][2] ?? '');
     if (name === 'Changelog') continue;
     if (!SOUL_SLOTS.includes(name as SoulSlot)) continue;
     const from = (headings[i].index ?? 0) + headings[i][0].length;
@@ -56,6 +56,22 @@ export function parseSoul(markdown: string): Soul {
   };
 }
 
+/**
+ * A slot heading however the composer writes it: `## iris.how`, `### iris.how`, `## 2. iris.how`,
+ * `**iris.how**` or `## iris how`. The slot is its `target.name` id, not whatever markup surrounds it.
+ */
+function slotName(heading: string): string {
+  const text = heading
+    .replace(/^[*_#`\s]+/, '')
+    .replace(/[ *_#:`]+$/, '')
+    .trim();
+  const numbered = text.replace(/^\d+[.)]\s*/, '');
+  const exact = SOUL_SLOTS.find(slot => slot === numbered);
+  if (exact) return exact;
+  const spaced = numbered.replace(/\s+/g, '').toLowerCase();
+  return SOUL_SLOTS.find(slot => slot.replace('.', '') === spaced) ?? numbered;
+}
+
 /** True when the offset sits inside a fenced code block. */
 function insideFence(text: string, offset: number): boolean {
   let open = false;
@@ -65,9 +81,14 @@ function insideFence(text: string, offset: number): boolean {
   return open;
 }
 
+/**
+ * The prose inside a slot. A fenced slot is returned exactly as fenced (its own headings are
+ * the persona's, not markup). An unfenced one loses the heading it was copied under, if any.
+ */
 function unfence(value: string): string {
   const fence = value.match(/^```[a-z]*\n([\s\S]*?)\n```$/i);
-  return (fence ? fence[1] : value).trim();
+  if (fence) return fence[1].trim();
+  return value.replace(/^(?:#{1,6}[ \t]+[^\n]*|\*\*[^\n]+?\*\*:?)[ \t]*\n+/, '').trim();
 }
 
 function pool(value: string, name: string): unknown {

@@ -108,7 +108,7 @@ export function ModelsPanel({
       title="Models"
       open={open}
       onToggle={onToggle}
-      summary={only ? short(strong) : `${short(cheap)} · ${short(strong)}`}
+      summary={only ? short(strong) : (cheap === strong ? short(cheap) : `${short(cheap)} · ${short(strong)}`)}
     >
       {!only ? (
         <ModelPicker
@@ -133,8 +133,34 @@ export function ModelsPanel({
         models={models}
         loading={loading}
         disabled={disabled}
-        onChange={value => update({ strong: value })}
+        onChange={value => {
+          if (only && !choice.cheap) {
+            update({ strong: value, cheap: value });
+          } else {
+            update({ strong: value });
+          }
+        }}
       />
+      {!only && choice.strong && choice.cheap !== choice.strong ? (
+        <button
+          type="button"
+          className="small ghost"
+          style={{ alignSelf: 'flex-start', marginTop: 10 }}
+          onClick={() => update({ cheap: choice.strong })}
+        >
+          Use {short(choice.strong)} for bulk too
+        </button>
+      ) : null}
+      {!only && choice.cheap && choice.cheap !== choice.strong ? (
+        <button
+          type="button"
+          className="small ghost"
+          style={{ alignSelf: 'flex-start', marginTop: 10 }}
+          onClick={() => update({ strong: choice.cheap })}
+        >
+          Use {short(choice.cheap)} for synthesis too
+        </button>
+      ) : null}
       {failed ? <span className="hint err" style={{ display: 'block', marginTop: 10 }}>Catalogue unavailable. Paste a vendor/model id.</span> : null}
     </Panel>
   );

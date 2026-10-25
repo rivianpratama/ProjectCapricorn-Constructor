@@ -50,10 +50,10 @@ export const THRESHOLDS = {
   minGeneralisation: 3.5,
 } as const;
 
-export function scoreLikeness(pairs: LikenessPair[], judgements: LikenessJudgement[]): LikenessResult {
+export function scoreLikeness(pairs: LikenessPair[], judgements: Array<LikenessJudgement | null>): LikenessResult {
   const judged = pairs
     .map((_, i) => judgements[i])
-    .filter((judgement): judgement is LikenessJudgement => Boolean(judgement) && !judgement.skipped);
+    .filter((judgement): judgement is LikenessJudgement => judgement !== null && judgement !== undefined && !judgement.skipped);
   return {
     realPicked: judged.filter(judgement => judgement.pickedReal).length,
     total: judged.length,

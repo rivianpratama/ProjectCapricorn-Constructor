@@ -109,12 +109,16 @@ describe('phase 3m prompt', () => {
   });
 });
 
-describe('phase 1 prompt is agentic and budgeted', () => {
+describe('phase 1 prompt is one-shot and budgeted', () => {
   const text = read('phase1');
 
-  it('names the tools and the passes', () => {
-    for (const tool of ['search(', 'read(', 'count(', 'stats(', 'verify(', 'note(']) expect(text).toContain(tool);
-    expect(text).toContain('Disconfirm');
+  it('works over the transcript in four passes', () => {
+    for (const pass of ['Orient', 'Hunt', 'Disconfirm', 'Write']) expect(text).toContain(pass);
+    expect(text).toContain('single response');
+  });
+
+  it('does not describe tools the route never offers', () => {
+    expect(text).not.toMatch(/`(?:search|read|count|stats|verify|note)\(/);
   });
 
   it('gives every section a word budget', () => {

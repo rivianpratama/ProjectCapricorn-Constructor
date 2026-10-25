@@ -1,59 +1,60 @@
-import { complete, HttpError, keyFrom, modelsFrom, parseJson } from '../../../src/lib/openrouter';
-import { buildTail } from '../../../src/lib/fidelity/tail';
+import { currentRequestId, log, withLogging } from '../../../src/lib/log';
+import { completeDetailed, HttpError, keyFrom, modelsFrom } from '../../../src/lib/openrouter';
 import { webSystemPrompt } from '../../../src/lib/fidelity/irisesweb';
+import {
+  advanceTryState,
+  buildTryTail,
+  createTryState,
+  planTryTurn,
+  readEnvelope,
+  type TryState,
+} from '../../../src/lib/fidelity/tryloop';
 
 export const runtime = 'nodejs';
 
 interface Body {
   files: Record<string, string>;
   text: string;
+  /** The state the last reply left behind, as the client stored it. */
+  state?: TryState;
   history?: Array<{ role: 'them' | 'you'; text: string }>;
-  clockLabel?: string;
   tz?: string;
-  bubbleCap?: 1 | 2 | 3;
-  seed?: number;
-}
-
-interface Reply {
-  confidence_level?: number;
-  bubbles?: Array<{ text?: string }>;
-  status?: Record<string, unknown>;
+  /** Fixed clock, so a test can script a conversation. Defaults to now. */
+  now?: number;
 }
 
 export async function POST(request: Request): Promise<Response> {
+  return withLogging('try', handle)(request);
+}
+
+async function handle(request: Request): Promise<Response> {
   try {
     const key = keyFrom(request);
     const models = modelsFrom(request);
     const body = (await request.json()) as Body;
-    if (!body?.text?.trim()) throw new HttpError(400, 'nothing to reply to');
+    const text = typeof body?.text === 'string' ? body.text.trim() : '';
+    if (!text) throw new HttpError(400, 'nothing to reply to');
 
-    const system = webSystemPrompt(body.files ?? {});
-    const tail = buildTail(
-      {
-        clockLabel: body.clockLabel ?? clockLabel(),
-        tz: body.tz ?? 'Asia/Jakarta',
-        directiveLines: ['mood even, mask on'],
-        looseness: 2,
-        bubbleCap: body.bubbleCap ?? 3,
-        quietForced: false,
-        safety: false,
-        firstTurn: (body.history ?? []).length === 0,
-        voiceSeed: body.seed ?? minuteOfDay(),
-        text: body.text,
-      },
-      body.files ?? {},
-    );
+    const files = body.files ?? {};
+    const tz = body.tz ?? 'Asia/Jakarta';
+    const nowMs = Number.isFinite(body.now) ? Number(body.now) : Date.now();
+    const state = isTryState(body.state) ? body.state : createTryState(nowMs, tz);
 
-    const history = (body.history ?? []).map(turn => ({
-      role: turn.role === 'them' ? ('user' as const) : ('assistant' as const),
-      content: turn.text,
-    }));
+    const plan = planTryTurn({ state, tz, text, nowMs });
+    const tail = buildTryTail(plan, files);
 
-    const content = await complete({
+    const history = (body.history ?? [])
+      .filter(turn => typeof turn?.text === 'string' && turn.text)
+      .map(turn => ({
+        role: turn.role === 'them' ? ('user' as const) : ('assistant' as const),
+        content: turn.text,
+      }));
+
+    const { content, usage } = await completeDetailed({
       key,
       model: models.strong,
       messages: [
-        { role: 'system', content: system },
+        { role: 'system', content: webSystemPrompt(files) },
         ...history,
         { role: 'user', content: tail },
       ],
@@ -61,25 +62,37 @@ export async function POST(request: Request): Promise<Response> {
       maxTokens: 2_000,
     });
 
-    const reply = parseJson<Reply>(content);
-    const bubbles = (reply.bubbles ?? [])
-      .map(bubble => String(bubble?.text ?? '').trim())
-      .filter(Boolean);
-    if (!bubbles.length) throw new HttpError(502, 'the model sent no bubbles');
-    return Response.json({ bubbles, status: reply.status ?? null, confidence: reply.confidence_level ?? null });
+    const envelope = readEnvelope(content);
+    if (!envelope) throw new HttpError(502, 'the model sent no reply');
+
+    return Response.json({
+      bubbles: envelope.bubbles.map(bubble => bubble.text),
+      status: envelope.status,
+      state: advanceTryState(state, envelope, plan.clock, nowMs),
+      turn: plan.turn,
+      usage,
+    });
   } catch (error) {
-    if (error instanceof HttpError) return Response.json({ error: error.message }, { status: error.status });
-    const message = error instanceof Error ? error.message : 'try failed';
-    return Response.json({ error: message }, { status: 500 });
+    return failed(error, 'try failed');
   }
 }
 
-function minuteOfDay(): number {
-  const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
+/** A state from an older page load or a hand-rolled request is thrown away, never trusted. */
+function isTryState(value: unknown): value is TryState {
+  const state = value as TryState | undefined;
+  return (
+    !!state &&
+    typeof state === 'object' &&
+    !!state.gauges &&
+    typeof state.gauges === 'object' &&
+    Array.isArray(state.hookTrail) &&
+    Array.isArray(state.moves)
+  );
 }
 
-function clockLabel(): string {
-  const now = new Date();
-  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+/** Unexpected throws are logged with their stack; deliberate ones are not. */
+function failed(error: unknown, fallback: string): Response {
+  if (error instanceof HttpError) return Response.json({ error: error.message, id: currentRequestId() }, { status: error.status });
+  log.error('unexpected failure', { error, fallback });
+  return Response.json({ error: error instanceof Error ? error.message : fallback }, { status: 500 });
 }

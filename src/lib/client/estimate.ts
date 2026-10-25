@@ -1,5 +1,6 @@
-import { chunkMessages, splitHoldout } from '../chats/analyse';
+import { splitHoldout } from '../chats/analyse';
 import type { Message } from '../chats/types';
+import { phase1Chunks, type Phase1Mode } from '../pipeline/phase1';
 
 export interface Usage {
   input: number;
@@ -37,13 +38,13 @@ export function messageTokens(messages: Message[]): number {
 }
 
 /** Tokens for the whole build, from the chat ranges as they will be sent. Approximate by design. */
-export function estimateRun(chats: Message[][]): Estimate {
+export function estimateRun(chats: Message[][], mode: Phase1Mode = 'chunked'): Estimate {
   const bulk: Usage = { input: 0, output: 0 };
   const strong: Usage = { input: 0, output: 0 };
 
   for (const messages of chats) {
     const { training } = splitHoldout(messages);
-    const chunks = chunkMessages(training, 1200, 60);
+    const chunks = phase1Chunks(training, mode);
     for (const chunk of chunks) {
       bulk.input += PROMPT.phase1 + HEADER + messageTokens(chunk);
       bulk.output += OUT.engram;

@@ -1,12 +1,13 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { analyse, chunkMessages, heldOutPairs, pseudonymise, splitHoldout } from '../lib/chats/analyse';
+import { analyse, heldOutPairs, pseudonymise, splitHoldout } from '../lib/chats/analyse';
 import type { ChatStats, HeldOutPair } from '../lib/chats/types';
-import { api, keyStore, packStore } from '../lib/client/api';
+import { api, type ApiError, keyStore, packStore } from '../lib/client/api';
 import { useModels } from '../lib/client/useModels';
 import { estimateCost, estimateRun, formatCost, formatTokens } from '../lib/client/estimate';
 import { draftFromFile, draftMessages, type Draft } from '../lib/client/drafts';
+import { phase1Chunks } from '../lib/pipeline/phase1';
 import type { Questionnaire } from '../lib/schema/questionnaire';
 import type { PackFile } from '../lib/soul/pack';
 import { ChatCard } from './ChatCard';
@@ -64,6 +65,7 @@ export function Workbench() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [dropError, setDropError] = useState('');
   const [consent, setConsent] = useState(false);
+  const [oneShot, setOneShot] = useState(false);
   const [stage, setStage] = useState<Stage>('chats');
   const [error, setError] = useState('');
   const [lanes, setLanes] = useState<Lane[]>([]);
@@ -132,7 +134,7 @@ export function Workbench() {
     running.current = true;
     setError('');
     setStage('running');
-    addLog(`Building ${drafts.length} engram${drafts.length === 1 ? '' : 's'}.`);
+    addLog(`Building ${drafts.length} engram${drafts.length === 1 ? '' : 's'}${oneShot ? ', one shot per chat' : ''}.`);
     const chats = drafts.map((draft, i) => ({ draft, label: `chat-${i + 1}` }));
     setLanes([
       ...chats.map(chat => ({ id: chat.draft.id, label: chat.label, value: 0 })),
@@ -154,8 +156,9 @@ export function Workbench() {
             const pseudoTraining = pseudonymise(training, chat.draft.subject);
             statsByChat[chatIndex] = analyse(pseudoTraining, chat.draft.subject);
             const pseudoHoldout = pseudonymise(heldout, chat.draft.subject);
-            const chunks = chunkMessages(pseudoTraining, 1200, 60);
+            const chunks = phase1Chunks(pseudoTraining, oneShot ? 'one-shot' : 'chunked');
             let finished = 0;
+            if (chunks.length === 1) setLane(chat.draft.id, 10);
 
             const parts = await Promise.all(
               chunks.map(async (chunk, ci) => {
@@ -230,8 +233,9 @@ export function Workbench() {
       setStage('questions');
       addLog(`${asked.questionnaire.items.length} questions ready.`);
     } catch (buildError) {
-      setError(buildError instanceof Error ? buildError.message : 'build failed');
-      addLog(`Build failed: ${buildError instanceof Error ? buildError.message : 'unknown'}`);
+      const message = describeFailure(buildError, 'build failed');
+      setError(message);
+      addLog(`Build failed: ${message}`);
       setStage('chats');
     } finally {
       running.current = false;
@@ -249,6 +253,7 @@ export function Workbench() {
     }
     try {
       const response = await api<ComposeResponse>('/api/compose', key, {
+        // The parsed report outlives the Phase 2 response, so a large payload is safe to resend.
         report,
         answers: finalAnswers,
         n: drafts.length,
@@ -264,7 +269,7 @@ export function Workbench() {
       setDrafts(current => current.map(draft => ({ ...draft, messages: [] })));
       return response;
     } catch (composeError) {
-      setError(composeError instanceof Error ? composeError.message : 'compose failed');
+      setError(describeFailure(composeError, 'compose failed'));
       if (!options.revise) {
         setStage('questions');
         setLane('soul', 0);
@@ -297,8 +302,11 @@ export function Workbench() {
   }, [result]);
 
   const estimate = useMemo(
-    () => (drafts.length && stage === 'chats' ? estimateRun(drafts.map(draftMessages)) : null),
-    [drafts, stage],
+    () =>
+      drafts.length && stage === 'chats'
+        ? estimateRun(drafts.map(draftMessages), oneShot ? 'one-shot' : 'chunked')
+        : null,
+    [drafts, stage, oneShot],
   );
   const { models, defaults, choice } = modelState;
   const price = (id: string) => models.find(model => model.id === id);
@@ -357,6 +365,10 @@ export function Workbench() {
                 <label className="check" htmlFor="consent" style={{ marginTop: 0 }}>
                   <input id="consent" type="checkbox" checked={consent} disabled={busy} onChange={event => setConsent(event.target.checked)} />
                   <span>Everyone in these chats agreed</span>
+                </label>
+                <label className="check" htmlFor="one-shot">
+                  <input id="one-shot" type="checkbox" checked={oneShot} disabled={busy} onChange={event => setOneShot(event.target.checked)} />
+                  <span>One-shot each chat</span>
                 </label>
               </div>
             </section>
@@ -594,4 +606,11 @@ function Stepper({ step }: { step: number }) {
       ))}
     </span>
   );
+}
+
+/** A failed call as the user should see it: the message, plus the id that matches the server log. */
+function describeFailure(error: unknown, fallback: string): string {
+  if (!(error instanceof Error)) return fallback;
+  const id = (error as ApiError).requestId;
+  return id ? `${error.message} (id ${id})` : error.message;
 }

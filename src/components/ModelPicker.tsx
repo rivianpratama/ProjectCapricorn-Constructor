@@ -23,6 +23,7 @@ interface Props {
 }
 
 const SHOWN = 60;
+const VALID_MODEL_ID = /^[\w.~:\-]+\/[\w.~:\-]+$/;
 
 function price(value: number | null): string {
   if (value === null) return '?';
@@ -52,25 +53,51 @@ export function ModelPicker({ id, label, hint, value, fallback, models, loading,
   }, [models, query]);
 
   const typed = query.trim();
-  const custom = typed && /^[\w.~:-]+\/[\w.~:-]+$/.test(typed) && !models.some(model => model.id === typed) ? typed : '';
+  const custom = typed && VALID_MODEL_ID.test(typed) && !models.some(model => model.id === typed) ? typed : '';
   const rows = custom ? [{ id: custom, name: '', context: 0, promptPrice: null, completionPrice: null }, ...results] : results;
+
+  function pick(next: string) {
+    onChange(next);
+    setOpen(false);
+    setQuery('');
+  }
+
+  function commitTypedOrBest() {
+    const t = query.trim();
+    if (!t) {
+      setOpen(false);
+      setQuery('');
+      return;
+    }
+    if (VALID_MODEL_ID.test(t)) {
+      pick(t);
+      return;
+    }
+    const matched = models.find(m => m.id.toLowerCase() === t.toLowerCase() || m.name.toLowerCase() === t.toLowerCase());
+    if (matched) {
+      pick(matched.id);
+      return;
+    }
+    if (rows.length > 0 && rows[hi]) {
+      pick(rows[hi].id);
+      return;
+    }
+    setOpen(false);
+    setQuery('');
+  }
 
   useEffect(() => {
     if (!open) return;
     const away = (event: PointerEvent) => {
-      if (!box.current?.contains(event.target as Node)) setOpen(false);
+      if (!box.current?.contains(event.target as Node)) {
+        commitTypedOrBest();
+      }
     };
     document.addEventListener('pointerdown', away);
     return () => document.removeEventListener('pointerdown', away);
-  }, [open]);
+  }, [open, query, rows, hi]);
 
   useEffect(() => setHi(0), [query]);
-
-  function pick(next: string) {
-    onChange(next === fallback ? '' : next);
-    setOpen(false);
-    setQuery('');
-  }
 
   return (
     <div className="field">
@@ -87,7 +114,7 @@ export function ModelPicker({ id, label, hint, value, fallback, models, loading,
           spellCheck={false}
           disabled={disabled}
           value={open ? query : effective}
-          placeholder={open ? 'Search' : fallback}
+          placeholder={effective || fallback}
           onFocus={() => {
             setQuery('');
             setOpen(true);
@@ -103,11 +130,20 @@ export function ModelPicker({ id, label, hint, value, fallback, models, loading,
             } else if (event.key === 'ArrowUp') {
               event.preventDefault();
               setHi(index => Math.max(0, index - 1));
-            } else if (event.key === 'Enter' && open && rows[hi]) {
-              event.preventDefault();
-              pick(rows[hi].id);
+            } else if (event.key === 'Enter') {
+              if (open) {
+                event.preventDefault();
+                commitTypedOrBest();
+              }
+            } else if (event.key === 'Tab') {
+              if (open && query.trim()) {
+                commitTypedOrBest();
+              } else {
+                setOpen(false);
+              }
             } else if (event.key === 'Escape') {
               setOpen(false);
+              setQuery('');
             }
           }}
         />
@@ -125,7 +161,10 @@ export function ModelPicker({ id, label, hint, value, fallback, models, loading,
                 aria-selected={model.id === effective}
                 className={`opt ${index === hi ? 'hi' : ''} ${model.id === effective ? 'sel' : ''} ${model.id === custom ? 'custom' : ''}`}
                 onMouseEnter={() => setHi(index)}
-                onClick={() => pick(model.id)}
+                onMouseDown={event => {
+                  event.preventDefault();
+                  pick(model.id);
+                }}
               >
                 <span className="id">{model.id}</span>
                 <span className="meta">

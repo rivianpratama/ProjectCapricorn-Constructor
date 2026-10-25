@@ -50,40 +50,96 @@ export const ReportSchema = z.object({
 });
 export type Report = z.infer<typeof ReportSchema>;
 
+/**
+ * Sections that carry decisions for later phases, so an empty body is never acceptable: the
+ * fetcher builds memories from Life facts, the questionnaire filters sensitive ones with
+ * Questionnaire candidates, and the soul reads Light and shadow. A heading with nothing under
+ * it would let all three proceed on nothing.
+ */
+const NEVER_EMPTY = [
+  '2. Inheritance',
+  '3. Contradictions',
+  '7. Light and shadow',
+  '10. Life facts',
+  '11. Questionnaire candidates',
+];
+
 export function parseReport(markdown: string): Report {
   const document = splitSections(markdown);
   assertHeadings(document.sections);
   const sections: Record<string, string> = {};
-  for (const section of document.sections) sections[section.title] = section.body;
+  for (const section of document.sections) {
+    const key = `${numberedIndex(section.title)}. ${stripNumber(section.title)}`;
+    sections[key] = section.body;
+    sections[section.title] = section.body;
+  }
+  const empty = NEVER_EMPTY.filter(name => !(sections[name] ?? '').trim());
+  if (empty.length) {
+    const list = empty.map(name => `"## ${name}"`).join(', ');
+    throw new Error(`report section${empty.length > 1 ? 's' : ''} ${list} ${empty.length > 1 ? 'are' : 'is'} empty; write the content under the heading`);
+  }
 
-  return ReportSchema.parse({
-    sections,
-    ledger: parseLedger(sections['1. Trait ledger'] ?? ''),
-    drives: parseDrives(sections['4. Red thread'] ?? ''),
-    sketches: parseSketches(sections['8. Novel situations'] ?? ''),
-    pool: parsePool(sections['9. Exemplar pool'] ?? ''),
-    warmUp: parseWarmUp(sections['5. Warm-up arc'] ?? ''),
-  });
+  try {
+    return ReportSchema.parse({
+      sections,
+      ledger: parseLedger(sections['1. Trait ledger'] ?? ''),
+      drives: parseDrives(sections['4. Red thread'] ?? ''),
+      sketches: parseSketches(sections['8. Novel situations'] ?? ''),
+      pool: parsePool(sections['9. Exemplar pool'] ?? ''),
+      warmUp: parseWarmUp(sections['5. Warm-up arc'] ?? ''),
+    });
+  } catch (error) {
+    throw readable(error);
+  }
+}
+
+/** A parse failure as one sentence a model can be told about and a person can act on. */
+function readable(error: unknown): Error {
+  if (error instanceof Error && 'issues' in error && Array.isArray(error.issues)) {
+    const issues = (error as { issues: Array<{ path: PropertyKey[]; message: string }> }).issues;
+    const lines = issues.slice(0, 6).map(issue => `${issue.path.join('.') || 'report'}: ${issue.message}`);
+    return new Error(`report has ${issues.length} problem${issues.length === 1 ? '' : 's'}: ${lines.join('; ')}`);
+  }
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function assertHeadings(sections: ReturnType<typeof splitSections>['sections']): void {
   const expected = REPORT_SECTIONS.map((name, i) => `${i + 1}. ${name}`);
-  const actual = sections.map(section => `${numberedIndex(section.title)}. ${section.title.replace(/^\d+\.\s*/, '').trim()}`);
+  const actual = sections.map(section => `${numberedIndex(section.title)}. ${stripNumber(section.title)}`);
   if (actual.length !== expected.length) {
-    throw new Error(`report needs ${expected.length} sections, found ${actual.length}`);
+    const found = actual.length ? actual.join(', ') : 'no numbered headings';
+    throw new Error(`report needs ${expected.length} sections, found ${actual.length} (${found})`);
   }
   for (let i = 0; i < expected.length; i++) {
-    if (actual[i] !== expected[i]) {
+    if (normalise(actual[i]) !== normalise(expected[i])) {
       throw new Error(`report section ${i + 1} should be "${expected[i]}", found "${actual[i]}"`);
     }
   }
+}
+
+/** Headings match on the section's name, not on how the model cased, spaced or punctuated it. */
+function normalise(heading: string): string {
+  return heading
+    .toLowerCase()
+    .replace(/[^a-z0-9.]+/g, ' ')
+    .replace(/\s*\.\s*/g, '. ')
+    .trim();
+}
+
+function stripNumber(title: string): string {
+  return title
+    .replace(/^[*_#`\s]+/, '')
+    .replace(/^\d+\.\s*/, '')
+    .replace(/[*_#:`\s]+$/, '')
+    .trim();
 }
 
 function parseLedger(block: string): LedgerRow[] {
   return block
     .split('\n')
     .map(line => line.trim())
-    .filter(line => /^[-*]\s+`?id`?\s*[:=]/i.test(line))
+    // The bullet is the prompt's habit, not a requirement: a row is a row wherever it starts with `id:`.
+    .filter(line => /^[-*+]?\s*`?id`?\s*[:=]/i.test(line))
     .map(line => {
       const fields = labelledFields(line, ['id', 'trait', 'layer', 'supporting', 'contradicting', 'class', 'confidence']);
       const id = clean(fields.id);
@@ -114,9 +170,9 @@ function citedSources(value: string): string[] {
 
 function parseDrives(block: string): Drive[] {
   const rows = block
-    .split(/\n(?=[-*]\s)/)
+    .split(/\n(?=[-*+]?\s*`?id`?\s*[:=])/i)
     .map(chunk => chunk.trim())
-    .filter(chunk => /^[-*]\s+`?id`?\s*[:=]/i.test(chunk));
+    .filter(chunk => /^[-*+]?\s*`?id`?\s*[:=]/i.test(chunk));
   return rows.map(row => {
     const line = row.split('\n')[0].replace(/\s+/g, ' ');
     const fields = labelledFields(line, ['id', 'drive', 'sources']);
@@ -163,11 +219,28 @@ function parsePool(block: string): z.infer<typeof ExemplarSchema>[] {
   return out;
 }
 
+/**
+ * The three stages, under labels the model may write as `**stranger**`, `**Stranger:**`,
+ * `- **stranger**` or `### Stranger`. A stage runs to the next stage's label or the next
+ * heading of any kind (bold, hash or a numbered list item); anything else is its body.
+ */
 function parseWarmUp(block: string): string[] {
   const stages = ['stranger', 'familiar', 'close'];
-  const found = stages.map(stage => {
-    const match = block.match(new RegExp(`\\*\\*${stage}\\*\\*\\s*[:\\-]?\\s*([\\s\\S]*?)(?=\\n\\*\\*|$)`, 'i'));
-    return match ? match[1].replace(/\s+/g, ' ').trim() : '';
-  });
+  const label = (stage: string): RegExp =>
+    new RegExp(`^[ \\t]*(?:[-*+][ \\t]+)?(?:#{1,6}[ \\t]+)?(?:\\*{1,2}[ \\t]*)?${stage}\\b[ \\t]*(?:\\*{1,2})?[ \\t]*:?[ \\t]*(.*)$`, 'i');
+  const boundary = /^[ \t]*(?:#{1,6}[ \t]+|\*{1,2}[^\n]+?\*{1,2}:?[ \t]*$|(?:[-*+][ \t]+)?\d+[.)][ \t]+\S)/;
+  const lines = block.split('\n');
+  const found = stages.map(() => '');
+  for (const [i, line] of lines.entries()) {
+    const index = stages.findIndex(stage => label(stage).test(line));
+    if (index < 0) continue;
+    const rest = (label(stages[index]).exec(line)?.[1] ?? '').replace(/^[*_\s]+/, '');
+    const body: string[] = rest.trim() ? [rest] : [];
+    for (const next of lines.slice(i + 1)) {
+      if (stages.some(stage => label(stage).test(next)) || boundary.test(next)) break;
+      body.push(next);
+    }
+    found[index] = body.join(' ').replace(/\s+/g, ' ').trim();
+  }
   return found;
 }

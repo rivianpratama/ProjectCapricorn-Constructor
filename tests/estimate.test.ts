@@ -25,6 +25,17 @@ describe('estimate', () => {
     expect(big.bulk.output).toBeGreaterThan(small.bulk.output);
   });
 
+  it('charges one call and no merge when phase 1 is one-shot', () => {
+    const chunked = estimateRun([chat(5000)]);
+    const oneShot = estimateRun([chat(5000)], 'one-shot');
+    expect(oneShot.bulk.input).toBeLessThan(chunked.bulk.input);
+    expect(oneShot.bulk.output).toBeLessThan(chunked.bulk.output);
+  });
+
+  it('matches the chunked estimate when a chat already fits one chunk', () => {
+    expect(estimateRun([chat(100)], 'one-shot')).toEqual(estimateRun([chat(100)]));
+  });
+
   it('grows with the number of chats', () => {
     expect(estimateRun([chat(100), chat(100)]).strong.input).toBeGreaterThan(estimateRun([chat(100)]).strong.input);
   });

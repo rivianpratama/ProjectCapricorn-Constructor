@@ -31,6 +31,9 @@ export function transcriptFor(input: TranscriptInput): string {
     '',
     '## Transcript',
     lines.join('\n'),
+    '',
+    '---',
+    'Now write the complete engram report in Markdown with all 11 numbered H2 headings (from "## 1. Context" through "## 11. Gaps") based on the transcript and stats above. Output Markdown only, starting directly with "## 1. Context".',
   ].join('\n');
 }
 

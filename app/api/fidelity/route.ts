@@ -1,3 +1,4 @@
+import { currentRequestId, log, withLogging } from '../../../src/lib/log';
 import { complete, HttpError, keyFrom, modelsFrom, type Models, parseJson } from '../../../src/lib/openrouter';
 import { webSystemPrompt } from '../../../src/lib/fidelity/irisesweb';
 import { buildTail } from '../../../src/lib/fidelity/tail';
@@ -16,6 +17,10 @@ interface Body {
 }
 
 export async function POST(request: Request): Promise<Response> {
+  return withLogging('fidelity', handle)(request);
+}
+
+async function handle(request: Request): Promise<Response> {
   try {
     const key = keyFrom(request);
     const models = modelsFrom(request);
@@ -26,6 +31,10 @@ export async function POST(request: Request): Promise<Response> {
     const system = webSystemPrompt(body.files ?? {});
     const generated = await generate(key, models, system, body.files ?? {}, pairs);
 
+    // A pair the generator returned nothing for (or the judge could not read) measures the runner,
+    // not the persona; it is skipped rather than counted as a wrong answer.
+    const empty = generated.filter(reply => !reply?.length).length;
+    if (empty) log.warn('fidelity generation returned nothing for some pairs', { empty, pairs: generated.length });
     const judgements = await judgePairs(key, models, pairs, generated, body.removedTraits ?? []);
     const likeness = scoreLikeness(
       pairs.map(pair => ({ stimulus: pair.stimulus, real: pair.reply, generated: [] })),
@@ -37,9 +46,7 @@ export async function POST(request: Request): Promise<Response> {
 
     return Response.json({ likeness, generalisation, parroting, verdict: outcome, generated });
   } catch (error) {
-    if (error instanceof HttpError) return Response.json({ error: error.message }, { status: error.status });
-    const message = error instanceof Error ? error.message : 'fidelity failed';
-    return Response.json({ error: message }, { status: 500 });
+    return failed(error, 'fidelity failed');
   }
 }
 
@@ -95,10 +102,10 @@ async function judgePairs(
   pairs: Body['pairs'],
   generated: string[][],
   removedTraits: string[],
-): Promise<LikenessJudgement[]> {
+): Promise<Array<LikenessJudgement | null>> {
   const lines = pairs.map((pair, i) => {
     const real = pair.reply.join(' / ');
-    const made = generated[i].join(' / ') || '(nothing)';
+    const made = generated[i]?.join(' / ') || '(nothing)';
     const first = realIsFirst(i) ? real : made;
     const second = realIsFirst(i) ? made : real;
     return [`Pair ${i + 1}`, `A: ${first}`, `B: ${second}`].join('\n');
@@ -139,9 +146,18 @@ async function judgePairs(
     }>;
   }>(content);
 
-  return (parsed.pairs ?? []).slice(0, pairs.length).map((entry, i) => {
-    const pickedA = String(entry.picked ?? 'A').trim().toUpperCase().startsWith('A');
+  const entries = parsed.pairs ?? [];
+  if (entries.length < pairs.length) {
+    log.warn('judge answered fewer pairs than asked', { asked: pairs.length, answered: entries.length });
+  }
+  return pairs.map((_, i) => {
+    const entry = entries[i];
+    if (!entry) return null;
+    // A pick the judge wrote as prose ("The real person") is not a pick; it must not become "A".
+    const picked = /^\s*\**\s*(A|B)\b/i.exec(String(entry.picked ?? ''))?.[1]?.toUpperCase();
+    if (!picked) return null;
     const realFirst = realIsFirst(i);
+    const pickedA = picked === 'A';
     const made = realFirst ? entry.b : entry.a;
     return {
       pickedReal: realFirst ? pickedA : !pickedA,
@@ -200,3 +216,10 @@ const JUDGE_SYSTEM = `You are judging whether a persona behaves like a real pers
 Rate only behaviour: voice, the move chosen, and emotional fit. A reply that copies the person's old lines is a failure, not a success. A reply that acts from the person's needs and fears in a situation they never saw is a success.
 
 Return JSON only. Never explain.`;
+
+/** Unexpected throws are logged with their stack; deliberate ones are not. */
+function failed(error: unknown, fallback: string): Response {
+  if (error instanceof HttpError) return Response.json({ error: error.message, id: currentRequestId() }, { status: error.status });
+  log.error('unexpected failure', { error, fallback });
+  return Response.json({ error: error instanceof Error ? error.message : fallback }, { status: 500 });
+}

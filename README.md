@@ -56,7 +56,7 @@ chat exports ─▶ engram per chat ─▶ merged report ─▶ questionnaire �
 |---|---|
 | Parse | Reads WhatsApp or LINE exports, computes stats, holds out real replies for testing |
 | Pseudonymise | Replaces names before anything leaves the browser |
-| Engram | One analysis per chat, in chunks for long chats, with verbatim evidence for every finding |
+| Engram | One analysis per chat: one shot for the whole chat, or chunks for long chats, with verbatim evidence for every finding |
 | Merge | Combines the engrams into one report of drives and traits |
 | Questionnaire | You decide the name, nicknames and which traits stay |
 | Compose | Writes the soul, renders the target files and lints every slot |

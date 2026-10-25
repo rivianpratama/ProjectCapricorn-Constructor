@@ -25,7 +25,7 @@ Less data means more humility. When N is one or two, say where the child is infe
 
 ## Output
 
-`ENGRAM_REPORT.md`, Markdown, with exactly these headings in this order. Word ranges are for prose, not counting ledger, drive, fact and exemplar lines. The exact line shapes are parsed by code.
+Markdown, with exactly these `##` headings in this order, written exactly as here. Word ranges are for prose, not counting ledger, drive, fact and exemplar lines. The exact line shapes are parsed by code, and a heading in any other shape is a section the report does not have.
 
 # ENGRAM
 

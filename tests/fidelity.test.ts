@@ -37,6 +37,17 @@ describe('likeness scoring', () => {
   });
 });
 
+describe('likeness scoring with an unreadable judge', () => {
+  it('skips pairs the judge answered in prose instead of counting them as a miss', () => {
+    const pairs = Array.from({ length: 4 }, (_, i) => ({ stimulus: `s${i}`, real: [`r${i}`], generated: [`g${i}`] }));
+    const readable = { pickedReal: true, voice: 4, move: 4, emotion: 4 };
+    const result = scoreLikeness(pairs, [readable, null, readable, null] as never);
+    expect(result.total).toBe(2);
+    expect(result.skipped).toBe(2);
+    expect(result.realPicked).toBe(2);
+  });
+});
+
 describe('parroting scoring', () => {
   it('scores a copy as heavy overlap and a fresh voice as low', () => {
     const subject = ['i got the weird menu thing and it was so good'];
