@@ -42,3 +42,15 @@ describe('originality', async () => {
     expect(lintOriginality(soul, base, 'lives near Pulomas, Jakarta')).toEqual([]);
   });
 });
+
+describe('depth', async () => {
+  const { lintDepth } = await import('../src/lib/soul/lint');
+  const { baseSlots } = await import('../src/lib/soul/base');
+  const base = baseSlots();
+
+  it('sends back a slot far thinner than Iris, and passes one at her depth', () => {
+    const thin = { ...base, 'web.persona': '## Who you are\n\nYou are Capri.' };
+    expect(lintDepth(thin, base).map(issue => `${issue.slot} ${issue.rule}`)).toEqual(['web.persona too-thin']);
+    expect(lintDepth(base, base)).toEqual([]);
+  });
+});

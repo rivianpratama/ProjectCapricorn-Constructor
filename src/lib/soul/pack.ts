@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { renderTarget, projectPath, type ApplyResult } from './slots';
-import { lintOriginality, lintPools, lintSoul, lintWebLength, type LintIssue } from './lint';
+import { lintDepth, lintOriginality, lintPools, lintSoul, lintWebLength, type LintIssue } from './lint';
 import { baseSlots } from './base';
 import { SOUL_SLOTS, type Soul } from './parseSoul';
 import { renderApply } from './apply';
@@ -21,6 +21,8 @@ export interface PackOptions {
   report?: string;
   /** Iris's slots to measure copying against. Defaults to the vendored targets. */
   base?: Record<string, string>;
+  /** Hold every slot to Iris's depth. The compose route turns this on; fixtures are too small for it. */
+  depth?: boolean;
 }
 
 export interface Pack {
@@ -70,6 +72,7 @@ export function buildPack(soul: Soul, soulMarkdown: string, options: PackOptions
     ...lintSoul(Object.fromEntries(SOUL_SLOTS.map(slot => [slot, soul[slot]]))),
     ...lintWebLength(Object.fromEntries(SOUL_SLOTS.map(slot => [slot, soul[slot]])), 12_000),
     ...lintOriginality(Object.fromEntries(SOUL_SLOTS.map(slot => [slot, soul[slot]])), options.base ?? baseSlots(), options.report),
+    ...(options.depth ? lintDepth(Object.fromEntries(SOUL_SLOTS.map(slot => [slot, soul[slot]])), options.base ?? baseSlots()) : []),
   ];
   const poolIssues = lintPools(soul.pools);
   const apply = renderApply({

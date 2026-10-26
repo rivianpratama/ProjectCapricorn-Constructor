@@ -166,6 +166,28 @@ export function lintOriginality(soul: Record<string, string>, base: Record<strin
   return issues;
 }
 
+/**
+ * Iris is the gold standard for depth: a slot far shorter than hers has dropped mechanisms, not just words.
+ * `iris.language` is mostly contract, so it is left to the copy check.
+ */
+export const DEPTH_FLOOR = 0.7;
+
+export function lintDepth(soul: Record<string, string>, base: Record<string, string>, floor = DEPTH_FLOOR): LintIssue[] {
+  const issues: LintIssue[] = [];
+  for (const slot of ['iris.persona', 'iris.how', 'iris.banter', 'web.persona', 'web.how']) {
+    if (soul[slot] === undefined || !base[slot]) continue;
+    const need = Math.round(base[slot].length * floor);
+    if (soul[slot].length < need) {
+      issues.push({
+        slot,
+        rule: 'too-thin',
+        detail: `${soul[slot].length} characters against Iris's ${base[slot].length}, so mechanisms are missing. Bring it to at least ${need} by covering every mechanism the Iris slot carries, in this person's own way`,
+      });
+    }
+  }
+  return issues;
+}
+
 /** The web target is the compressed one, and its prompt must stay small. */
 export function lintWebLength(soul: Record<string, string>, others: number, limit = 30_000): LintIssue[] {
   const total = soul['web.persona'].length + soul['web.how'].length + others;

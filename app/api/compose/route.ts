@@ -43,18 +43,17 @@ async function handle(request: Request): Promise<Response> {
           ...Object.entries(body.answers ?? {}).map(([id, answer]) => `- ${id}: ${answer}`),
         ].join('\n')
       : [
-          'The engram report follows, then the decisions the owner made, then the one Iris slot that carries a tool contract.',
+          'The engram report follows, then the decisions the owner made, then Iris, the gold standard.',
           '',
           body.report,
           '',
           '## Decisions',
           ...Object.entries(body.answers ?? {}).map(([id, answer]) => `- ${id}: ${answer}`),
           '',
-          // Only the language slot goes in: it carries the tool contract. The rest of Iris stays out of the
-          // model's view, because a model shown her text copies it whatever the prompt says.
-          '## Iris, language slot only',
-          `### iris.language`,
-          baseSlots()['iris.language'] ?? '',
+          '## Iris, the gold standard',
+          'Reference for depth, logic and length only. Every slot you write matches its length and the number of mechanisms it carries, and shares none of its wording or persona.',
+          '',
+          ...Object.entries(baseSlots()).flatMap(([slot, text]) => [`### ${slot} (${text.length} characters)`, text, '']),
         ].join('\n');
 
     const system = prompt('phase3b');
@@ -119,7 +118,7 @@ async function compose(key: string, models: Models, system: string, user: string
         { role: 'user', content: user },
       ],
       temperature: 0.6,
-      maxTokens: 24_000,
+      maxTokens: 32_000,
     })
   ).content;
 }
@@ -138,7 +137,7 @@ function rank(built: Built): number {
 function build(markdown: string, body: Body): Built {
   let pack: ReturnType<typeof buildPack>;
   try {
-    pack = buildPack(parseSoul(markdown), markdown, { n: body.n, report: body.report });
+    pack = buildPack(parseSoul(markdown), markdown, { n: body.n, report: body.report, depth: !body.previous });
   } catch (error) {
     return { pack: null, problem: [error instanceof Error ? error.message : 'the soul did not parse'] };
   }
