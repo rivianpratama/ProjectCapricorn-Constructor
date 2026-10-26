@@ -60,3 +60,12 @@ describe('sanitizeSoul', () => {
     expect(sanitizeSoul(text)).toEqual({ markdown: text, changed: false });
   });
 });
+
+describe('reduplication', async () => {
+  const { spellDigits } = await import('../src/lib/soul/sanitize');
+  it('doubles an Indonesian word instead of spelling its two', () => {
+    expect(spellDigits('biar ga kemana2')).toBe('biar ga kemana-kemana');
+    expect(spellDigits('iya2in aja')).toBe('iya-iyain aja');
+    expect(spellDigits('jam 2 pagi')).toBe('jam two pagi');
+  });
+});

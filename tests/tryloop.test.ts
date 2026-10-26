@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { POST as tryPost } from '../app/api/try/route';
 import { toVendorTail } from '../src/lib/fidelity/tail';
+import { asMeeting } from '../src/lib/fidelity/meeting';
 import { advanceTryState, planTryTurn, readEnvelope, type TryState } from '../src/lib/fidelity/tryloop';
 import {
   buildTail as vendorBuildTail,
@@ -104,7 +105,7 @@ describe('TryRoom parity with IrisesWeb', () => {
     });
 
     const tail = tailOf(sent[0]);
-    expect(tail).toBe(vendorBuildTail(toVendorTail(planned.tail)));
+    expect(tail).toBe(asMeeting(vendorBuildTail(toVendorTail(planned.tail))));
     // And it is really a framed turn, not an empty string that happens to match.
     expect(tail.startsWith('<prompt>\n## Right now')).toBe(true);
     expect(tail).toContain(`<their_message>${text}</their_message>`);
@@ -248,7 +249,7 @@ describe('a scripted five-turn conversation', () => {
       const now = NOW + turn * 60_000;
       const clock = computeClock(now, TZ);
       const planned = planTurn({ state: pageState, clock, tz: TZ, text: texts[turn], lastCredit: false, now });
-      expected.push(vendorBuildTail(toVendorTail(planned.tail)));
+      expected.push(asMeeting(vendorBuildTail(toVendorTail(planned.tail))));
 
       const answer = await say(texts[turn], sentState, now);
       sentState = answer.state;

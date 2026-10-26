@@ -50,7 +50,7 @@ describe('tail port', () => {
     expect(tail.startsWith('<prompt>\n')).toBe(true);
     expect(tail).toContain('<their_message>so how was the thing</their_message>');
     expect(tail).toContain("## Right now\nIt's 21.04 for them (Asia/Jakarta).");
-    expect(tail).toContain('## Their first message\nThey just opened the demo');
+    expect(tail).toContain('## Their first message\nThis is the first thing they ever sent you');
     expect(tail).toContain('Your English this turn is loose. At most 2 bubbles.');
     expect(tail).toContain('## Still the same Irises, this far down');
     expect(tail.endsWith(jsonAnchor(2))).toBe(true);
@@ -66,5 +66,10 @@ describe('tail port', () => {
     const careful = buildTail({ ...input, safety: true }, {});
     expect(careful).toContain('## Careful');
     expect(careful).not.toContain('## This turn');
+  });
+
+  it('frames the Try room as a first meeting, never a demo to install', () => {
+    const tail = buildTail({ ...input, directiveLines: [], lastCredit: true }, {});
+    expect(tail).not.toMatch(/demo|install|github|being tested|test you/i);
   });
 });

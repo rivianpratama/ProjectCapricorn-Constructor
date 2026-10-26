@@ -59,8 +59,10 @@ describe('IrisesWeb prompt reproduction', () => {
       'REPLY_FORMAT',
     ]);
     const prompt = webSystemPrompt({});
-    for (const name of order.slice(2)) expect(prompt).toContain(templateExport(system, name).slice(0, 40));
+    for (const name of order.slice(3)) expect(prompt).toContain(templateExport(system, name).slice(0, 40));
     expect(prompt).toContain('- mad covers hurt, hostile, angry');
+    expect(prompt).toContain('## Where you are\n\nYou are texting someone you only just met');
+    expect(prompt).not.toMatch(/install|github|test-driving/i);
   });
 
   it('swaps in the pack persona and voice when a pack is given', () => {

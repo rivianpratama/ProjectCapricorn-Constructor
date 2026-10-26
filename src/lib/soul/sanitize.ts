@@ -45,6 +45,8 @@ function ordinalWords(digits: string): string {
 /** Every digit written out: "2am" becomes "two am", "3.5" "three point five", "1st" "first", "50%" "fifty percent". */
 export function spellDigits(text: string): string {
   return text
+    // Indonesian reduplication: "kemana2" is "kemana-kemana", never "kemanatwo".
+    .replace(/\b([a-z]{2,})2(?=[a-z]{0,3}\b)/gi, '$1-$1')
     .replace(/(\d+)\s*%/g, (_, n: string) => `${numberWords(n)} percent`)
     .replace(/(\d+)(st|nd|rd|th)\b/gi, (_, n: string) => ordinalWords(n))
     .replace(/(\d+)\.(\d+)/g, (_, a: string, b: string) => `${numberWords(a)} point ${[...b].map(d => ONES[Number(d)]).join(' ')}`)

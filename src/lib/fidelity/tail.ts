@@ -15,6 +15,7 @@ import {
   type TailInput as VendorTailInput,
 } from '../../../vendor/irises-web/current';
 import { poolExport } from './irisesweb';
+import { asMeeting } from './meeting';
 
 /**
  * The turn tail is IrisesWeb's own `buildTail`, imported from the pinned snapshot, not a copy of
@@ -65,6 +66,10 @@ function packedSamples(pools: Pools, seed: number): { samples: string; stretch: 
 }
 
 export function buildTail(input: TryTailInput, pack: Record<string, string>): string {
+  return asMeeting(packedTail(input, pack));
+}
+
+function packedTail(input: TryTailInput, pack: Record<string, string>): string {
   const full = toVendorTail(input);
   const vendor = vendorBuildTail(full);
   const pools = packPools(pack);

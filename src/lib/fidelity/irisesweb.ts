@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { baselinePath, readAdapter } from '../soul/slots';
+import { MEETING_CONTEXT } from './meeting';
 
 /**
  * The vendored IrisesWeb prompt modules, read as text. The Try page must frame a turn exactly as
@@ -87,7 +88,7 @@ export function toJsonArray(body: string): string {
 
 /**
  * The eight blocks of IrisesWeb's SYSTEM_PROMPT, with the pack's persona and voice in place of the
- * snapshot's. Everything else is byte-identical to the snapshot.
+ * snapshot's, and the demo context framed as a first meeting. Everything else is byte-identical.
  */
 export function webSystemPrompt(pack: Record<string, string>): string {
   const system = read('irises-web', 'src/worker/prompt/system.ts');
@@ -96,8 +97,9 @@ export function webSystemPrompt(pack: Record<string, string>): string {
   const personaText = persona ? templateExport(persona, 'PERSONA') : templateExport(read('irises-web', MODULES[0]), 'PERSONA');
   const howText = persona ? templateExport(persona, 'HOW_YOU_WRITE') : templateExport(read('irises-web', MODULES[0]), 'HOW_YOU_WRITE');
 
-  const blocks = ['DEMO_CONTEXT', 'TOOL_DOC', 'STATUS_CONTRACT', 'SAFETY', 'TURN_FRAME', 'REPLY_FORMAT'].map(
-    name => templateExport(system, name).replace('${vocabularyLines()}', vocabularyLines()),
+  // The demo page's context (a visitor test-driving Irises before installing it) becomes a first meeting.
+  const blocks = ['DEMO_CONTEXT', 'TOOL_DOC', 'STATUS_CONTRACT', 'SAFETY', 'TURN_FRAME', 'REPLY_FORMAT'].map(name =>
+    name === 'DEMO_CONTEXT' ? MEETING_CONTEXT : templateExport(system, name).replace('${vocabularyLines()}', vocabularyLines()),
   );
   return [personaText, howText, ...blocks].join('\n\n');
 }
