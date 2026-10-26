@@ -351,3 +351,21 @@ a:hover { text-decoration-color: var(--accent); }
 .estimate { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 0 2px; }
 .estimate b { font: 500 20px/1.15 var(--mono); font-variant-numeric: tabular-nums; }
 .estimate span { font: 400 12px/1 var(--mono); color: var(--faint); }
+
+/* reasoning effort under a model picker */
+.effort { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.effort.off { opacity: .55; pointer-events: none; }
+.effort .seg button { text-transform: capitalize; }
+
+/* the live stream in the inspector */
+.streamview { flex: 1; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.streamview .note { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; border-top: 0; }
+.streamview .note select { flex: 1; min-width: 0; }
+.streamview .lane { flex: 1; min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); }
+.streamview .lane .eyebrow { padding: 8px 16px 0; }
+.tail {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 8px 16px 12px; font: 12px/1.55 var(--mono);
+  color: var(--ink); white-space: pre-wrap; word-break: break-word; background: var(--well);
+}
+.streamview .thinking .tail { color: var(--muted); }
+.tail.idle { color: var(--faint); }

@@ -33,7 +33,14 @@ describe('originality', async () => {
     expect(rules).toContain('iris.persona iris-residue');
     expect(rules).toContain('web.how copied-from-iris');
     const web = lintOriginality(lazy, base).find(issue => issue.slot === 'web.persona')!;
-    expect(web.detail).toContain('Rewrite these first, "');
+    expect(web.detail).toContain('Some of the copied sentences, "');
+  });
+
+  it('counts a sentence with a word or two swapped as copied', () => {
+    const [sentence] = base['web.persona'].split(/(?<=[.!?])\s+/).filter(line => line.split(' ').length > 14);
+    const words = sentence.split(' ');
+    words[words.length - 3] = 'banana';
+    expect(copiedShare(words.join(' '), base['web.persona'])).toBe(1);
   });
 
   it('lets a residue term through when the report gives it to the child', () => {

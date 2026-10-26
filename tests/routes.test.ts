@@ -467,7 +467,7 @@ describe('compose route repair', () => {
     }) as typeof fetch;
     const response = await composePost(request('/api/compose', { report, answers: {}, n: 1 }));
     expect(response.status).toBe(200);
-    expect(calls).toBe(3);
+    expect(calls).toBe(4);
     const data = (await response.json()) as { issues: Array<{ rule: string }>; files: unknown[] };
     expect(data.issues.some(issue => issue.rule === 'no-placeholder')).toBe(true);
     expect(data.files.length).toBeGreaterThan(0);
@@ -487,5 +487,31 @@ describe('compose route repair', () => {
     }) as typeof fetch;
     const response = await composePost(request('/api/compose', { report, answers: {}, n: 1 }));
     expect(response.status).toBe(200);
+  });
+});
+
+describe('compose route transform', () => {
+  it('rewrites a slot that kept Iris on its own, not with a whole-soul repair', async () => {
+    const { baseSlots } = await import('../src/lib/soul/base');
+    const { parseSoul, renderSoul } = await import('../src/lib/soul/parseSoul');
+    const copied = renderSoul({ ...parseSoul(soul), 'web.how': baseSlots()['web.how'] });
+    const fresh = '## How you write\n\n' + 'You type in quick lowercase bursts and drop a letter when you hurry. '.repeat(60);
+    const systems: string[] = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes('/models')) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      const sent = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
+      systems.push(sent.messages[0].content);
+      const content = systems.length === 1 ? copied : '```text\n' + fresh + '\n```';
+      return new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    const response = await composePost(request('/api/compose', { report, answers: {}, n: 1 }));
+    expect(response.status).toBe(200);
+    expect(systems[1]).toContain('transform one slot');
+    const data = (await response.json()) as { markdown: string; issues: Array<{ rule: string }> };
+    expect(data.issues.some(issue => issue.rule === 'copied-from-iris')).toBe(false);
+    expect(data.markdown).toContain('quick lowercase bursts');
   });
 });

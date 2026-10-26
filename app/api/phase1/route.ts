@@ -1,5 +1,5 @@
 import { currentRequestId, log, withLogging } from '../../../src/lib/log';
-import { completeLongForm, HttpError, keyFrom, modelsFrom } from '../../../src/lib/openrouter';
+import { completeLongForm, HttpError, keyFrom, modelsFrom, forRole } from '../../../src/lib/openrouter';
 import { prompt } from '../../../src/lib/prompts';
 import { transcriptFor } from '../../../src/lib/pipeline/transcript';
 import { parseEngramDetailed, type Engram, type FindingSummary } from '../../../src/lib/schema/engram';
@@ -49,7 +49,7 @@ async function handle(request: Request): Promise<Response> {
     let markdown = (
       await completeLongForm({
         key,
-        model: models.cheap,
+        ...forRole(models, 'cheap'),
         messages: [
           { role: 'system', content: prompt('phase1') },
           { role: 'user', content: user },
@@ -71,7 +71,7 @@ async function handle(request: Request): Promise<Response> {
       const repaired = (
         await completeLongForm({
           key,
-          model: models.cheap,
+          ...forRole(models, 'cheap'),
           messages: [
             { role: 'system', content: prompt('phase1') },
             { role: 'user', content: user },

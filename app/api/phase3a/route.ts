@@ -1,5 +1,5 @@
 import { currentRequestId, log, withLogging } from '../../../src/lib/log';
-import { completeLongForm, HttpError, keyFrom, modelsFrom, parseJson } from '../../../src/lib/openrouter';
+import { completeLongForm, HttpError, keyFrom, modelsFrom, parseJson, forRole } from '../../../src/lib/openrouter';
 import { prompt } from '../../../src/lib/prompts';
 import { buildQuestionnaire } from '../../../src/lib/schema/questionnaire';
 
@@ -26,7 +26,7 @@ async function handle(request: Request): Promise<Response> {
     const content = (
       await completeLongForm({
         key,
-        model: models.strong,
+        ...forRole(models, 'strong'),
         json: true,
         messages: [
           { role: 'system', content: prompt('phase3a') },

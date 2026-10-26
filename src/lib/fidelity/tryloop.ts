@@ -56,7 +56,81 @@ export function buildTryTail(plan: PlannedTurn, pack: Record<string, string>): s
 }
 
 export function readEnvelope(raw: string): Envelope | null {
-  return parseEnvelope(raw);
+  const direct = parseEnvelope(raw);
+  if (direct) return direct;
+
+  // 1. Strip <think>...</think> blocks from reasoning models
+  const stripped = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  const withoutThink = parseEnvelope(stripped);
+  if (withoutThink) return withoutThink;
+
+  // 2. Sanitize unescaped control characters in JSON strings
+  const sanitized = parseEnvelope(sanitizeJsonStrings(stripped));
+  if (sanitized) return sanitized;
+
+  // 3. Fallback for single reply/text/message field
+  try {
+    const a = stripped.indexOf('{');
+    const b = stripped.lastIndexOf('}');
+    if (a >= 0 && b > a) {
+      const obj = JSON.parse(sanitizeJsonStrings(stripped.slice(a, b + 1))) as Record<string, unknown>;
+      const text =
+        typeof obj.reply === 'string'
+          ? obj.reply
+          : typeof obj.text === 'string'
+            ? obj.text
+            : typeof obj.message === 'string'
+              ? obj.message
+              : typeof obj.response === 'string'
+                ? obj.response
+                : null;
+      if (text && text.trim()) {
+        return {
+          confidence_level: 70,
+          tool_calls: null,
+          bubbles: [{ text: text.trim() }],
+          status: null,
+        };
+      }
+    }
+  } catch {
+    // Malformed JSON
+  }
+
+  return null;
+}
+
+function sanitizeJsonStrings(raw: string): string {
+  let inString = false;
+  let escaped = false;
+  let out = '';
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        out += ch;
+      } else if (ch === '\\') {
+        escaped = true;
+        out += ch;
+      } else if (ch === '"') {
+        inString = false;
+        out += ch;
+      } else if (ch === '\n') {
+        out += '\\n';
+      } else if (ch === '\r') {
+        out += '\\r';
+      } else if (ch === '\t') {
+        out += '\\t';
+      } else {
+        out += ch;
+      }
+    } else {
+      if (ch === '"') inString = true;
+      out += ch;
+    }
+  }
+  return out;
 }
 
 /**

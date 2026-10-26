@@ -5,6 +5,7 @@ import { analyse, heldOutPairs, pseudonymise, splitHoldout } from '../lib/chats/
 import type { ChatStats, HeldOutPair } from '../lib/chats/types';
 import { api, type ApiError, keyStore, packStore } from '../lib/client/api';
 import { useModels } from '../lib/client/useModels';
+import { useStream } from '../lib/client/useStream';
 import { estimateCost, estimateRun, formatCost, formatTokens } from '../lib/client/estimate';
 import { draftFromFile, draftMessages, type Draft } from '../lib/client/drafts';
 import { phase1Chunks, type Phase1Mode } from '../lib/pipeline/phase1';
@@ -14,6 +15,7 @@ import { ChatCard } from './ChatCard';
 import { FidelityPanel } from './FidelityPanel';
 import { QuestionCard } from './QuestionCard';
 import { KeyPanel, ModelsPanel, useOpenPanels } from './Settings';
+import { StreamView } from './StreamView';
 import { Seg } from './ui';
 
 type Stage = 'chats' | 'running' | 'questions' | 'soul' | 'done';
@@ -60,7 +62,8 @@ export function Workbench() {
   const modelState = useModels();
   const panels = useOpenPanels({ key: true, models: true });
   const [drawer, setDrawer] = useState(false);
-  const [tab, setTab] = useState<'report' | 'files' | 'log'>('report');
+  const [tab, setTab] = useState<'stream' | 'report' | 'files' | 'log'>('report');
+  const stream = useStream();
   const [fileIndex, setFileIndex] = useState(0);
   const [log, setLog] = useState<string[]>([]);
   const [over, setOver] = useState(false);
@@ -126,6 +129,12 @@ export function Workbench() {
     setDrafts(current => [...current, ...added]);
   }
 
+  /** A run is the moment to watch it: open the inspector on the stream. */
+  function showStream() {
+    setTab('stream');
+    setDrawer(true);
+  }
+
   function addLog(line: string) {
     const stamp = new Date().toLocaleTimeString([], { hour12: false });
     setLog(current => [...current, `${stamp}  ${line}`]);
@@ -135,6 +144,8 @@ export function Workbench() {
     if (running.current || !ready) return;
     running.current = true;
     setError('');
+    stream.clear();
+    showStream();
     setStage('running');
     addLog(`Building ${drafts.length} engram${drafts.length === 1 ? '' : 's'}${mode === 'one-shot' ? ', one shot per chat' : ''}.`);
     const chats = drafts.map((draft, i) => ({ draft, label: `chat-${i + 1}` }));
@@ -172,7 +183,7 @@ export function Workbench() {
                   stats: analyse(chunk, chat.draft.subject),
                   mode,
                   chunk: chunks.length > 1 ? { index: ci + 1, count: chunks.length } : undefined,
-                });
+                }, stream.listen(chunks.length > 1 ? `${chat.label} · ${ci + 1}/${chunks.length}` : chat.label));
                 finished += 1;
                 if (chunks.length > 1) setLane(chat.draft.id, Math.round((finished / chunks.length) * 80));
                 return response.markdown;
@@ -185,7 +196,7 @@ export function Workbench() {
               const merged = await api<{ markdown: string }>('/api/phase1-merge', key, {
                 chat: chat.label,
                 engrams: parts,
-              });
+              }, stream.listen(`${chat.label} · merge`));
               engram = merged.markdown;
             }
 
@@ -219,7 +230,7 @@ export function Workbench() {
           engram: engrams[i],
           stats: statsByChat[i],
         })),
-      });
+      }, stream.listen('report'));
       setReport(merged.markdown);
       setSketches(merged.report.sketches.map(sketch => `${sketch.situation} Drive: ${sketch.drive}`));
       setDrives(merged.report.drives.map(drive => drive.drive));
@@ -228,7 +239,7 @@ export function Workbench() {
 
       addLog('Report written. Drafting the questionnaire.');
       setLane('questions', 40);
-      const asked = await api<Phase3aResponse>('/api/phase3a', key, { report: merged.markdown, n: chats.length });
+      const asked = await api<Phase3aResponse>('/api/phase3a', key, { report: merged.markdown, n: chats.length }, stream.listen('questions'));
       setLane('questions', 100);
       setQuestions(asked.questionnaire);
       setAnswers(Object.fromEntries(asked.questionnaire.items.map(item => [item.id, item.default])));
@@ -250,6 +261,7 @@ export function Workbench() {
     options: { previous?: string; fixes?: string[]; revise?: boolean } = {},
   ): Promise<ComposeResponse | null> {
     setError('');
+    showStream();
     if (!options.revise) {
       setStage('soul');
       setLane('soul', 20);
@@ -262,7 +274,7 @@ export function Workbench() {
         n: drafts.length,
         previous: options.previous,
         fixes: options.fixes,
-      });
+      }, stream.listen(options.revise ? 'soul · revision' : 'soul'));
       if (!options.revise) setLane('soul', 100);
       setResult(response);
       setStage('done');
@@ -572,6 +584,7 @@ export function Workbench() {
                 value={tab}
                 onChange={setTab}
                 options={[
+                  { id: 'stream', label: stream.calls.some(call => call.state === 'live') ? 'Stream ●' : 'Stream' },
                   { id: 'report', label: 'Report' },
                   { id: 'files', label: files.length ? `Files · ${files.length}` : 'Files' },
                   { id: 'log', label: log.length ? `Log · ${log.length}` : 'Log' },
@@ -582,6 +595,7 @@ export function Workbench() {
                 <button className="small ghost close" onClick={() => setDrawer(false)} aria-label="Hide inspector">✕</button>
               </div>
             </div>
+            {tab === 'stream' ? <StreamView calls={stream.calls} /> : null}
             {tab === 'report' ? (
               <>
                 <pre>{report || ' '}</pre>

@@ -1,6 +1,12 @@
+import { isEffort, type ReasoningEffort } from '../effort';
+import type { StreamEvent } from '../stream';
+
 export interface ModelChoice {
   cheap: string;
   strong: string;
+  /** Empty means the model's own default. */
+  effortCheap: ReasoningEffort | '';
+  effortStrong: ReasoningEffort | '';
 }
 
 export interface ApiError extends Error {
@@ -9,7 +15,13 @@ export interface ApiError extends Error {
   status?: number;
 }
 
-export async function api<T>(path: string, key: string, body: unknown): Promise<T> {
+export async function api<T>(
+  path: string,
+  key: string,
+  body: unknown,
+  /** When given, the request streams and each model event is passed here as it arrives. */
+  onEvent?: (event: StreamEvent) => void,
+): Promise<T> {
   const models = modelStore.get();
   const headers: Record<string, string> = {
     'content-type': 'application/json',
@@ -18,6 +30,9 @@ export async function api<T>(path: string, key: string, body: unknown): Promise<
   };
   if (models.cheap) headers['x-openrouter-model-cheap'] = models.cheap;
   if (models.strong) headers['x-openrouter-model-strong'] = models.strong;
+  if (models.effortCheap) headers['x-openrouter-effort-cheap'] = models.effortCheap;
+  if (models.effortStrong) headers['x-openrouter-effort-strong'] = models.effortStrong;
+  if (onEvent) headers['x-stream'] = '1';
   let response: Response;
   try {
     response = await fetch(path, {
@@ -29,9 +44,54 @@ export async function api<T>(path: string, key: string, body: unknown): Promise<
     // A network-level failure never reaches the server, so this line is the only trace.
     throw failure(path, undefined, 0, 'could not reach the server');
   }
+  if (onEvent && response.ok && response.body) {
+    const result = await readEvents(response.body, onEvent);
+    if (!result) throw failure(path, undefined, 0, 'the connection closed before the answer arrived');
+    const body = (result.body ?? {}) as { error?: string; id?: string };
+    if (result.status >= 400) throw failure(path, body.id, result.status, body.error || 'request failed');
+    return result.body as T;
+  }
   const data = (await response.json().catch(() => ({}))) as { error?: string; id?: string };
   if (!response.ok) throw failure(path, data.id, response.status, data.error || 'request failed');
   return data as T;
+}
+
+/** Reads newline-delimited events, passing each to `onEvent`, and returns the closing `result`. */
+async function readEvents(
+  stream: ReadableStream<Uint8Array>,
+  onEvent: (event: StreamEvent) => void,
+): Promise<Extract<StreamEvent, { type: 'result' }> | null> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result: Extract<StreamEvent, { type: 'result' }> | null = null;
+  const line = (raw: string) => {
+    if (!raw.trim()) return;
+    let event: StreamEvent;
+    try {
+      event = JSON.parse(raw) as StreamEvent;
+    } catch {
+      return;
+    }
+    if (event.type === 'result') result = event;
+    else if (event.type !== 'ping') onEvent(event);
+  };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (value) buffer += decoder.decode(value, { stream: !done });
+      let at: number;
+      while ((at = buffer.indexOf('\n')) >= 0) {
+        line(buffer.slice(0, at));
+        buffer = buffer.slice(at + 1);
+      }
+      if (done) break;
+    }
+  } catch {
+    return result;
+  }
+  line(buffer);
+  return result;
 }
 
 /** One place to build and report a failed call. The key never appears here. */
@@ -98,12 +158,18 @@ const MODEL = 'constructinator.models';
 /** The chosen OpenRouter models. An empty string means "use the server default". */
 export const modelStore = {
   get(): ModelChoice {
-    if (typeof window === 'undefined') return { cheap: '', strong: '' };
+    const empty: ModelChoice = { cheap: '', strong: '', effortCheap: '', effortStrong: '' };
+    if (typeof window === 'undefined') return empty;
     try {
       const raw = JSON.parse(window.localStorage.getItem(MODEL) ?? '{}') as Partial<ModelChoice>;
-      return { cheap: raw.cheap ?? '', strong: raw.strong ?? '' };
+      return {
+        cheap: raw.cheap ?? '',
+        strong: raw.strong ?? '',
+        effortCheap: isEffort(raw.effortCheap) ? raw.effortCheap : '',
+        effortStrong: isEffort(raw.effortStrong) ? raw.effortStrong : '',
+      };
     } catch {
-      return { cheap: '', strong: '' };
+      return empty;
     }
   },
   set(value: ModelChoice): void {

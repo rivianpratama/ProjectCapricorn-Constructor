@@ -18,18 +18,21 @@ const POOLS = new Set<SoulSlot>(['samples', 'stretch', 'punct']);
 
 export function parseSoul(markdown: string): Soul {
   const text = markdown.replace(/\r\n/g, '\n').trim();
-  const headings = [...text.matchAll(/^[ \t]*#{2,3}[ \t]+(.+?)[ \t]*$|^[ \t]*\*\*(.+?)\*\*:?[ \t]*$/gm)].filter(
-    match => !insideFence(text, match.index ?? 0),
-  );
+  // A slot ends only where the next slot begins. The persona's own headings (`## Who you are`, the
+  // opening line a host app requires) are content, whether the composer fenced the slot or not, and
+  // a nested fence inside a slot must not hide the next slot's heading.
+  const headings = [...text.matchAll(/^[ \t]*#{2,3}[ \t]+(.+?)[ \t]*$|^[ \t]*\*\*(.+?)\*\*:?[ \t]*$/gm)]
+    .map(match => ({ match, name: slotName(match[1] ?? match[2] ?? '') }))
+    .filter(({ name }) => name === 'Changelog' || SOUL_SLOTS.includes(name as SoulSlot));
   const body: Record<string, string> = {};
 
   for (let i = 0; i < headings.length; i++) {
-    const name = slotName(headings[i][1] ?? headings[i][2] ?? '');
+    const { match, name } = headings[i];
     if (name === 'Changelog') continue;
-    if (!SOUL_SLOTS.includes(name as SoulSlot)) continue;
-    const from = (headings[i].index ?? 0) + headings[i][0].length;
-    const to = headings[i + 1]?.index ?? text.length;
-    body[name] = text.slice(from, to).trim();
+    const from = (match.index ?? 0) + match[0].length;
+    const to = headings[i + 1]?.match.index ?? text.length;
+    // The first heading for a slot wins; a stray repeat later in the text does not replace it.
+    if (!body[name]) body[name] = text.slice(from, to).trim();
   }
 
   const missing = SOUL_SLOTS.filter(slot => !body[slot]);
@@ -72,15 +75,6 @@ function slotName(heading: string): string {
   return SOUL_SLOTS.find(slot => slot.replace('.', '') === spaced) ?? numbered;
 }
 
-/** True when the offset sits inside a fenced code block. */
-function insideFence(text: string, offset: number): boolean {
-  let open = false;
-  for (const line of text.slice(0, offset).split('\n')) {
-    if (/^\s*```/.test(line)) open = !open;
-  }
-  return open;
-}
-
 /**
  * The prose inside a slot. A fenced slot is returned exactly as fenced (its own headings are
  * the persona's, not markup). An unfenced one loses the heading it was copied under, if any.
@@ -88,7 +82,10 @@ function insideFence(text: string, offset: number): boolean {
 function unfence(value: string): string {
   const fence = value.match(/^```[a-z]*\n([\s\S]*?)\n```$/i);
   if (fence) return fence[1].trim();
-  return value.replace(/^(?:#{1,6}[ \t]+[^\n]*|\*\*[^\n]+?\*\*:?)[ \t]*\n+/, '').trim();
+  const first = value.match(/^(?:#{1,6}[ \t]+([^\n]*)|\*\*([^\n]+?)\*\*:?)[ \t]*\n+/);
+  // Only a heading that merely repeats the slot id is dropped. `## Who you are` is the slot's own opening.
+  if (first && SOUL_SLOTS.includes(slotName(first[1] ?? first[2] ?? '') as SoulSlot)) return value.slice(first[0].length).trim();
+  return value.trim();
 }
 
 function pool(value: string, name: string): unknown {

@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { api, keyStore } from '../lib/client/api';
+import type { ReasoningEffort } from '../lib/effort';
 import type { useModels } from '../lib/client/useModels';
-import { ModelPicker } from './ModelPicker';
+import { effortsFor, ModelPicker } from './ModelPicker';
 import { Panel } from './ui';
 
 export function useOpenPanels(initial: Record<string, boolean>) {
@@ -102,6 +103,9 @@ export function ModelsPanel({
   const short = (id: string) => id.split('/').pop() ?? id;
   const strong = choice.strong || defaults.strong;
   const cheap = choice.cheap || defaults.cheap;
+  // A new model may not offer the effort the old one did; the setting follows only where it still fits.
+  const kept = (id: string, effort: ReasoningEffort | '') =>
+    effort && effortsFor(models.find(model => model.id === (id || ''))).includes(effort) ? effort : '';
   return (
     <Panel
       id="models"
@@ -120,7 +124,9 @@ export function ModelsPanel({
           models={models}
           loading={loading}
           disabled={disabled}
-          onChange={value => update({ cheap: value })}
+          onChange={value => update({ cheap: value, effortCheap: kept(value || defaults.cheap, choice.effortCheap) })}
+          effort={choice.effortCheap}
+          onEffort={effortCheap => update({ effortCheap })}
         />
       ) : null}
       <div style={{ height: only ? 0 : 14 }} />
@@ -134,19 +140,22 @@ export function ModelsPanel({
         loading={loading}
         disabled={disabled}
         onChange={value => {
+          const effortStrong = kept(value || defaults.strong, choice.effortStrong);
           if (only && !choice.cheap) {
-            update({ strong: value, cheap: value });
+            update({ strong: value, cheap: value, effortStrong });
           } else {
-            update({ strong: value });
+            update({ strong: value, effortStrong });
           }
         }}
+        effort={choice.effortStrong}
+        onEffort={effortStrong => update({ effortStrong })}
       />
       {!only && choice.strong && choice.cheap !== choice.strong ? (
         <button
           type="button"
           className="small ghost"
           style={{ alignSelf: 'flex-start', marginTop: 10 }}
-          onClick={() => update({ cheap: choice.strong })}
+          onClick={() => update({ cheap: choice.strong, effortCheap: kept(choice.strong, choice.effortStrong) })}
         >
           Use {short(choice.strong)} for bulk too
         </button>
@@ -156,7 +165,7 @@ export function ModelsPanel({
           type="button"
           className="small ghost"
           style={{ alignSelf: 'flex-start', marginTop: 10 }}
-          onClick={() => update({ strong: choice.cheap })}
+          onClick={() => update({ strong: choice.cheap, effortStrong: kept(choice.cheap, choice.effortCheap) })}
         >
           Use {short(choice.cheap)} for synthesis too
         </button>

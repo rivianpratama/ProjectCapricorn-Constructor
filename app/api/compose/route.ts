@@ -1,7 +1,8 @@
 import { currentRequestId, log, withLogging } from '../../../src/lib/log';
-import { completeLongForm, HttpError, keyFrom, modelsFrom, type Models } from '../../../src/lib/openrouter';
+import { completeLongForm, HttpError, keyFrom, modelsFrom, type Models, forRole } from '../../../src/lib/openrouter';
 import { prompt } from '../../../src/lib/prompts';
-import { parseSoul } from '../../../src/lib/soul/parseSoul';
+import { parseSoul, renderSoul, type SoulSlot } from '../../../src/lib/soul/parseSoul';
+import { overCopied } from '../../../src/lib/soul/lint';
 import { buildPack } from '../../../src/lib/soul/pack';
 import { sanitizeSoul } from '../../../src/lib/soul/sanitize';
 import { baseSlots } from '../../../src/lib/soul/base';
@@ -64,24 +65,33 @@ async function handle(request: Request): Promise<Response> {
       return { markdown, built: build(markdown, body) };
     };
 
+    const base = baseSlots();
     let current = await attempt(user);
     let best = current;
-    // A soul that will not parse or lint is a few lines from right. Two repair turns at most, and the
-    // best soul seen wins, so a worse rewrite never replaces a better one.
-    for (let round = 0; round < 2 && current.built.problem.length > 0; round++) {
-      const repair = [
-        user,
-        ...(current.built.pack ? ['', '## Your previous soul', current.markdown] : []),
-        '',
-        '## Fix these before answering again',
-        ...current.built.problem.map(problem => `- ${problem}`),
-        '',
-        current.built.pack
-          ? 'Rewrite the whole soul, changing only what these demand.'
-          : 'Answer with the whole SOUL.md: one H2 per slot, in order, and nothing else.',
-      ].join('\n');
+    // A soul that will not parse or lint is a few lines from right. Three repair turns at most, and the
+    // best soul seen wins, so a worse rewrite never replaces a better one. A slot that kept Iris's wording
+    // is not fixed by a whole-soul "change only this" note (the model keeps the slot and rewords a few
+    // lines), so those slots get their own rewrite, one call per slot, before any whole-soul repair.
+    for (let round = 0; round < 3 && current.built.problem.length > 0; round++) {
       try {
-        current = await attempt(repair);
+        const copied = current.built.pack ? overCopied(parseSoul(current.markdown) as unknown as Record<string, string>, base) : [];
+        if (copied.length) {
+          const markdown = await transform(key, models, body, current.markdown, copied as SoulSlot[], base);
+          current = { markdown, built: build(markdown, body) };
+        } else {
+          const repair = [
+            user,
+            ...(current.built.pack ? ['', '## Your previous soul', current.markdown] : []),
+            '',
+            '## Fix these before answering again',
+            ...current.built.problem.map(problem => `- ${problem}`),
+            '',
+            current.built.pack
+              ? 'Rewrite the whole soul, changing only what these demand.'
+              : 'Answer with the whole SOUL.md: one H2 per slot, in order, and nothing else.',
+          ].join('\n');
+          current = await attempt(repair);
+        }
       } catch (error) {
         // A repair that fails to arrive must not cost the soul already in hand.
         if (!best.built.pack) throw error;
@@ -108,17 +118,49 @@ async function handle(request: Request): Promise<Response> {
   }
 }
 
-async function compose(key: string, models: Models, system: string, user: string): Promise<string> {
+/**
+ * Rewrite each over-copied slot on its own, against Iris's paragraph for that slot, and splice the
+ * results back. A slot whose rewrite fails or comes back empty keeps its draft.
+ */
+async function transform(key: string, models: Models, body: Body, markdown: string, slots: SoulSlot[], base: Record<string, string>): Promise<string> {
+  const soul = parseSoul(markdown);
+  const system = prompt('phase3b-transform');
+  const rewritten = await Promise.all(
+    slots.map(async slot => {
+      const user = [
+        `Rewrite the slot \`${slot}\`. Iris's version is ${base[slot].length} characters; match that within fifteen percent.`,
+        '',
+        body.report,
+        '',
+        '## Decisions',
+        ...Object.entries(body.answers ?? {}).map(([id, answer]) => `- ${id}: ${answer}`),
+        '',
+        `## Iris's ${slot}, the gold standard for depth`,
+        base[slot],
+        '',
+        '## The current draft, too close to Iris',
+        soul[slot],
+      ].join('\n');
+      const text = await compose(key, models, system, user, 12_000);
+      const fenced = text.match(/```[a-z]*\n([\s\S]*?)\n```/i);
+      return [slot, (fenced ? fenced[1] : text).trim()] as const;
+    }),
+  );
+  for (const [slot, text] of rewritten) if (text.length > base[slot].length * 0.3) soul[slot] = text;
+  return sanitizeSoul(renderSoul(soul)).markdown;
+}
+
+async function compose(key: string, models: Models, system: string, user: string, maxTokens = 32_000): Promise<string> {
   return (
     await completeLongForm({
       key,
-      model: models.strong,
+      ...forRole(models, 'strong'),
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
       ],
       temperature: 0.6,
-      maxTokens: 32_000,
+      maxTokens,
     })
   ).content;
 }

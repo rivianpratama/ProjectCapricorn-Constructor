@@ -1,5 +1,5 @@
 import { currentRequestId, log, withLogging } from '../../../src/lib/log';
-import { completeLongForm, fitMessages, HttpError, keyFrom, modelsFrom } from '../../../src/lib/openrouter';
+import { completeLongForm, fitMessages, HttpError, keyFrom, modelsFrom, forRole } from '../../../src/lib/openrouter';
 import { prompt } from '../../../src/lib/prompts';
 import { inheritanceRules } from '../../../src/lib/pipeline/rules';
 import { parseReport, REPORT_SECTIONS } from '../../../src/lib/schema/report';
@@ -75,7 +75,7 @@ async function handle(request: Request): Promise<Response> {
       { role: 'user' as const, content: user },
     ];
     let markdown = (
-      await completeLongForm({ key, model: models.strong, messages, temperature: 0.4, maxTokens: 24_000 })
+      await completeLongForm({ key, ...forRole(models, 'strong'), messages, temperature: 0.4, maxTokens: 24_000 })
     ).content;
 
     let report: Report;
@@ -102,7 +102,7 @@ async function handle(request: Request): Promise<Response> {
       const repaired = (
         await completeLongForm({
           key,
-          model: models.strong,
+          ...forRole(models, 'strong'),
           messages: repairMessages,
           temperature: 0.2,
           maxTokens: 24_000,

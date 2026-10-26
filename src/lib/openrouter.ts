@@ -1,4 +1,7 @@
-import { log } from './log';
+import { isEffort, type ReasoningEffort } from './effort';
+import { isStreaming, log, nextCall, streamEvent } from './log';
+
+export type { ReasoningEffort };
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant';
@@ -16,8 +19,6 @@ export interface CompletionOptions {
   reasoning?: ReasoningOptions;
 }
 
-export type ReasoningEffort = 'max' | 'xhigh' | 'high' | 'medium' | 'low' | 'minimal' | 'none';
-
 export interface ReasoningOptions {
   effort?: ReasoningEffort;
   max_tokens?: number;
@@ -34,6 +35,16 @@ export interface Models {
   cheap: string;
   /** Synthesis and judging: report, questions, soul, try room. */
   strong: string;
+  /** Reasoning effort the user picked per role. Absent means the model's own default. */
+  effort?: Partial<Record<Role, ReasoningEffort>>;
+}
+
+export type Role = 'cheap' | 'strong';
+
+/** The model and reasoning setting for one role, ready to spread into a completion call. */
+export function forRole(models: Models, role: Role): { model: string; reasoning?: ReasoningOptions } {
+  const effort = models.effort?.[role];
+  return effort ? { model: models[role], reasoning: { effort } } : { model: models[role] };
 }
 
 export const MODELS: Models = {
@@ -49,9 +60,16 @@ export function modelsFrom(request: Request): Models {
     const value = request.headers.get(name)?.trim();
     return value && MODEL_ID.test(value) ? value : fallback;
   };
+  const effortOf = (name: string): ReasoningEffort | undefined => {
+    const value = request.headers.get(name)?.trim().toLowerCase();
+    return isEffort(value) ? value : undefined;
+  };
+  const cheap = effortOf('x-openrouter-effort-cheap');
+  const strong = effortOf('x-openrouter-effort-strong');
   return {
     cheap: pick('x-openrouter-model-cheap', MODELS.cheap),
     strong: pick('x-openrouter-model-strong', MODELS.strong),
+    ...(cheap || strong ? { effort: { ...(cheap ? { cheap } : {}), ...(strong ? { strong } : {}) } } : {}),
   };
 }
 
@@ -295,6 +313,10 @@ export async function requestCompletion(options: CompletionOptions): Promise<Det
   };
   if (options.json) body.response_format = { type: 'json_object' };
   if (options.reasoning) body.reasoning = options.reasoning;
+  // A streamed request shows the model working. The assembled result is the same either way.
+  const streaming = isStreaming();
+  if (streaming) body.stream = true;
+  const call = streaming ? nextCall() : 0;
 
   // The model, its role and what we sent; never the key or the prompts themselves.
   const context = {
@@ -326,15 +348,34 @@ export async function requestCompletion(options: CompletionOptions): Promise<Det
     return failed(new HttpError(502, 'could not reach openrouter'));
   }
 
-  const text = await response.text();
   let parsed: CompletionResponse = {};
-  try {
-    parsed = JSON.parse(text) as CompletionResponse;
-  } catch {
-    if (!response.ok) return failed(new HttpError(response.status, shortError(text)));
-    return failed(new HttpError(502, 'model returned unreadable output'));
+  if (streaming && response.ok && response.body) {
+    streamEvent({ type: 'start', call, model: String(body.model), effort: options.reasoning?.effort });
+    try {
+      parsed = await readStream(response.body, call);
+    } catch (error) {
+      streamEvent({ type: 'end', call, ms: Math.round(performance.now() - started), error: 'the stream broke' });
+      return failed(error instanceof HttpError ? error : new HttpError(502, 'the stream from openrouter broke'));
+    }
+    streamEvent({
+      type: 'end',
+      call,
+      ms: Math.round(performance.now() - started),
+      completion: tokens(parsed.usage?.completion_tokens),
+      reasoning: tokens(parsed.usage?.completion_tokens_details?.reasoning_tokens),
+      finish: parsed.choices?.[0]?.finish_reason ?? undefined,
+      error: parsed.error?.message ? shortError(parsed.error.message) : undefined,
+    });
+  } else {
+    const text = await response.text();
+    try {
+      parsed = JSON.parse(text) as CompletionResponse;
+    } catch {
+      if (!response.ok) return failed(new HttpError(response.status, shortError(text)));
+      return failed(new HttpError(502, 'model returned unreadable output'));
+    }
+    if (!response.ok) return failed(new HttpError(response.status, shortError(parsed.error?.message ?? text)));
   }
-  if (!response.ok) return failed(new HttpError(response.status, shortError(parsed.error?.message ?? text)));
   if (parsed.error?.message) return failed(new HttpError(502, shortError(parsed.error.message)));
 
   const choices = parsed.choices ?? [];
@@ -392,6 +433,86 @@ export async function requestCompletion(options: CompletionOptions): Promise<Det
     });
   }
   return detailed;
+}
+
+interface StreamChunk {
+  choices?: Array<{
+    delta?: { content?: string | null; reasoning?: string | null; refusal?: string | null };
+    finish_reason?: string | null;
+    native_finish_reason?: string | null;
+  }>;
+  usage?: CompletionResponse['usage'];
+  error?: { message?: string };
+}
+
+/**
+ * Reads OpenRouter's server-sent events and forwards each piece to the browser as it arrives.
+ * What comes back has the shape of a plain completion, so one code path judges both.
+ */
+async function readStream(stream: ReadableStream<Uint8Array>, call: number): Promise<CompletionResponse> {
+  const decoder = new TextDecoder();
+  const reader = stream.getReader();
+  let buffer = '';
+  let content = '';
+  let reasoning = '';
+  let refusal = '';
+  let finish: string | undefined;
+  let native: string | undefined;
+  let usage: CompletionResponse['usage'];
+  let error: string | undefined;
+
+  const line = (raw: string): void => {
+    // Comment lines (": OPENROUTER PROCESSING") keep the connection warm and carry nothing.
+    if (!raw.startsWith('data:')) return;
+    const data = raw.slice(5).trim();
+    if (!data || data === '[DONE]') return;
+    let chunk: StreamChunk;
+    try {
+      chunk = JSON.parse(data) as StreamChunk;
+    } catch {
+      return;
+    }
+    if (chunk.error?.message) error = chunk.error.message;
+    if (chunk.usage) usage = chunk.usage;
+    const choice = chunk.choices?.[0];
+    if (!choice) return;
+    if (choice.finish_reason) finish = choice.finish_reason;
+    if (choice.native_finish_reason) native = choice.native_finish_reason;
+    const delta = choice.delta;
+    if (typeof delta?.reasoning === 'string' && delta.reasoning) {
+      reasoning += delta.reasoning;
+      streamEvent({ type: 'reasoning', call, text: delta.reasoning });
+    }
+    if (typeof delta?.content === 'string' && delta.content) {
+      content += delta.content;
+      streamEvent({ type: 'answer', call, text: delta.content });
+    }
+    if (typeof delta?.refusal === 'string') refusal += delta.refusal;
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: !done });
+    let at: number;
+    while ((at = buffer.indexOf('\n')) >= 0) {
+      line(buffer.slice(0, at).replace(/\r$/, ''));
+      buffer = buffer.slice(at + 1);
+    }
+    if (done) break;
+  }
+  if (buffer) line(buffer.replace(/\r$/, ''));
+
+  return {
+    choices: [
+      {
+        message: { content, reasoning: reasoning || null, refusal: refusal || null },
+        finish_reason: finish ?? null,
+        native_finish_reason: native ?? null,
+      },
+    ],
+    usage,
+    ...(error ? { error: { message: error } } : {}),
+  };
 }
 
 /** `complete`, plus the token counts the Try room prints under each reply. */

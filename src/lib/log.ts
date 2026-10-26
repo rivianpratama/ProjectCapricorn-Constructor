@@ -1,3 +1,4 @@
+import type { StreamEvent } from './stream';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 /**
@@ -123,9 +124,35 @@ export const CONSOLE_SINK: Sink = consoleSink;
 interface RequestScope {
   id: string;
   route: string;
+  /** Present when the browser asked for a streamed response. */
+  stream?: (event: StreamEvent) => void;
+  /** How many model calls this request has started, so the browser can tell them apart. */
+  calls?: number;
 }
 
 const scope = new AsyncLocalStorage<RequestScope>();
+
+/** True when the request being handled is streaming its progress to the browser. */
+export function isStreaming(): boolean {
+  return !!scope.getStore()?.stream;
+}
+
+/** The next model-call number inside this request, starting at one. */
+export function nextCall(): number {
+  const store = scope.getStore();
+  if (!store) return 1;
+  store.calls = (store.calls ?? 0) + 1;
+  return store.calls;
+}
+
+/** Sends a progress event to the browser when the request is streaming; a no-op otherwise. */
+export function streamEvent(event: StreamEvent): void {
+  try {
+    scope.getStore()?.stream?.(event);
+  } catch {
+    // A closed connection must never fail the work that is still running.
+  }
+}
 
 /** A safe request id from the header, or null for anything malformed. */
 export function requestIdFrom(header: string | null): string | null {
@@ -204,20 +231,66 @@ export function withLogging(route: string, handler: Handler): Handler {
     const id = requestIdFrom(request.headers.get('x-request-id')) ?? newRequestId();
     const started = performance.now();
     const schedule = await scheduler();
+    const wantsStream = request.headers.get('x-stream') === '1';
 
-    return scope.run({ id, route }, async () => {
-      let response: Response;
-      try {
-        response = await handler(request);
-      } catch (error) {
-        response = failure(error, id);
-      }
-      const status = response.status;
-      const ms = Math.round(performance.now() - started);
-      schedule(() =>
-        emit(status >= 500 ? 'error' : 'info', 'request', { event: 'request', method: request.method, status, ms }),
-      );
-      return response;
+    const run = async (stream?: (event: StreamEvent) => void): Promise<Response> =>
+      scope.run({ id, route, stream }, async () => {
+        let response: Response;
+        try {
+          response = await handler(request);
+        } catch (error) {
+          response = failure(error, id);
+        }
+        const status = response.status;
+        const ms = Math.round(performance.now() - started);
+        schedule(() =>
+          emit(status >= 500 ? 'error' : 'info', 'request', { event: 'request', method: request.method, status, ms }),
+        );
+        return response;
+      });
+
+    if (!wantsStream) return run();
+
+    // One JSON object per line. The handler's own response rides in the last `result` line, so a
+    // route behaves the same streamed or not. Pings keep proxies from closing a quiet connection.
+    const encoder = new TextEncoder();
+    let closed = false;
+    let ping: ReturnType<typeof setInterval> | undefined;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        const send = (event: StreamEvent) => {
+          if (closed) return;
+          try {
+            controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`));
+          } catch {
+            closed = true;
+          }
+        };
+        ping = setInterval(() => send({ type: 'ping' }), 10_000);
+        void run(send)
+          .then(async response => {
+            const text = await response.text();
+            let parsed: unknown = {};
+            try {
+              parsed = JSON.parse(text);
+            } catch {
+              parsed = { error: 'request failed', id };
+            }
+            send({ type: 'result', status: response.status, body: parsed });
+          })
+          .finally(() => {
+            clearInterval(ping);
+            if (!closed) controller.close();
+            closed = true;
+          });
+      },
+      cancel() {
+        closed = true;
+        clearInterval(ping);
+      },
+    });
+    return new Response(body, {
+      headers: { 'content-type': 'application/x-ndjson; charset=utf-8', 'cache-control': 'no-store, no-transform', 'x-accel-buffering': 'no' },
     });
   };
 }

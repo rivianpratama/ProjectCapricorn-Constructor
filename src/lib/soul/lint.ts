@@ -120,20 +120,47 @@ function sentences(text: string): string[] {
     .filter(sentence => sentence.length > 25);
 }
 
-/** The slot's sentences that are Iris's word for word, longest first, so a repair turn knows what to rewrite. */
-export function copiedSentences(text: string, base: string): string[] {
+const grams = (sentence: string) => {
+  const words = sentence.replace(/[^\p{L}\p{N}\s]/gu, '').split(' ').filter(Boolean);
+  const out: string[] = [];
+  for (let i = 0; i + 4 <= words.length; i++) out.push(words.slice(i, i + 4).join(' '));
+  return out;
+};
+
+/**
+ * Tells whether a sentence is Iris's: word for word, or hers with a word or two swapped (four in five of
+ * its four-word runs are hers). A swapped name or number must not pass as a rewrite.
+ */
+export function copyTest(base: string): (sentence: string) => boolean {
   const theirs = new Set(sentences(base));
-  return sentences(text).filter(sentence => theirs.has(sentence)).sort((a, b) => b.length - a.length);
+  const runs = new Set(sentences(base).flatMap(grams));
+  return sentence => {
+    if (theirs.has(sentence)) return true;
+    const own = grams(sentence);
+    return own.length >= 3 && own.filter(run => runs.has(run)).length / own.length >= 0.8;
+  };
 }
 
-/** Share of a slot's sentence text that is copied word for word from Iris's version of the slot. */
+/** The slot's sentences that are Iris's, longest first, so a repair turn knows what to rewrite. */
+export function copiedSentences(text: string, base: string): string[] {
+  const copied = copyTest(base);
+  return sentences(text).filter(copied).sort((a, b) => b.length - a.length);
+}
+
+/** Share of a slot's sentence text that is Iris's (see `copyTest`). */
 export function copiedShare(text: string, base: string): number {
-  const theirs = new Set(sentences(base));
+  const copied = copyTest(base);
   const ours = sentences(text);
   const total = ours.reduce((sum, sentence) => sum + sentence.length, 0);
   if (!total) return 0;
-  const copied = ours.filter(sentence => theirs.has(sentence)).reduce((sum, sentence) => sum + sentence.length, 0);
-  return copied / total;
+  return ours.filter(copied).reduce((sum, sentence) => sum + sentence.length, 0) / total;
+}
+
+/** Prose slots over their copy limit: the ones a transform pass must rewrite. */
+export function overCopied(soul: Record<string, string>, base: Record<string, string>): string[] {
+  return Object.entries(COPY_LIMITS)
+    .filter(([slot, limit]) => soul[slot] !== undefined && base[slot] !== undefined && copiedShare(soul[slot], base[slot]) > limit)
+    .map(([slot]) => slot);
 }
 
 /**
@@ -149,7 +176,7 @@ export function lintOriginality(soul: Record<string, string>, base: Record<strin
       issues.push({
         slot,
         rule: 'copied-from-iris',
-        detail: `${Math.round(share * 100)} percent of its sentences are Iris's word for word, keep it under ${Math.round(limit * 100)} and write the rest as the child. Rewrite these first, ${copiedSentences(soul[slot], base[slot]).slice(0, 6).map(line => `"${line}"`).join(', ')}`,
+        detail: `${Math.round(share * 100)} percent of its sentences are Iris's word for word, keep it under ${Math.round(limit * 100)} by rewriting every paragraph as this person, same job and length, new words and behaviour. Some of the copied sentences, ${copiedSentences(soul[slot], base[slot]).slice(0, 6).map(line => `"${line}"`).join(', ')}`,
       });
     }
   }

@@ -1,5 +1,5 @@
 import { currentRequestId, log, withLogging } from '../../../src/lib/log';
-import { completeLongForm, HttpError, keyFrom, modelsFrom } from '../../../src/lib/openrouter';
+import { completeLongForm, HttpError, keyFrom, modelsFrom, forRole } from '../../../src/lib/openrouter';
 import { prompt } from '../../../src/lib/prompts';
 import { parseEngramDetailed, type Engram, type FindingSummary } from '../../../src/lib/schema/engram';
 
@@ -37,7 +37,7 @@ async function handle(request: Request): Promise<Response> {
       { role: 'user' as const, content: user },
     ];
 
-    let markdown = (await completeLongForm({ key, model: models.cheap, messages, temperature: 0.2, maxTokens: 24_000 })).content;
+    let markdown = (await completeLongForm({ key, ...forRole(models, 'cheap'), messages, temperature: 0.2, maxTokens: 24_000 })).content;
 
     let verdict = checked(markdown, body.chat);
     if (verdict.problem) {
@@ -54,7 +54,7 @@ async function handle(request: Request): Promise<Response> {
       markdown = (
         await completeLongForm({
           key,
-          model: models.cheap,
+          ...forRole(models, 'cheap'),
           messages: [...messages, { role: 'assistant' as const, content: markdown }, { role: 'user' as const, content: repair }],
           temperature: 0.2,
           maxTokens: 24_000,

@@ -89,3 +89,18 @@ describe('parseSoul heading shapes', () => {
     });
   }
 });
+
+describe('parseSoul unfenced slots', () => {
+  const baseline = parseSoul(fixture);
+
+  it('keeps a slot whose opening line is itself a heading', () => {
+    // The composer sometimes drops the fences: `## iris.how` is then followed straight by `## How you write ...`.
+    const unfenced = fixture.replace(/```text\n([\s\S]*?)\n```/g, '$1');
+    const soul = parseSoul(unfenced);
+    for (const slot of ['iris.persona', 'iris.how', 'iris.language', 'web.persona', 'web.how'] as const) {
+      expect(soul[slot].length).toBeGreaterThan(0);
+    }
+    expect(soul['iris.how']).toContain('Short bubbles. Lowercase.');
+    expect(soul.pools).toEqual(baseline.pools);
+  });
+});

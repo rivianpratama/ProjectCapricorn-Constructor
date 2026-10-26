@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { EFFORTS, type ReasoningEffort } from '../lib/effort';
+import { Seg } from './ui';
 
 export interface ModelInfo {
   id: string;
@@ -8,6 +10,20 @@ export interface ModelInfo {
   context: number;
   promptPrice: number | null;
   completionPrice: number | null;
+  reasoning?: { supported_efforts?: string[] | null; mandatory?: boolean };
+}
+
+/**
+ * The efforts worth offering for a model: none when it does not reason, its own list when
+ * OpenRouter publishes one, and the three every provider maps when it reasons but says no more.
+ * A model that must reason cannot be switched off.
+ */
+export function effortsFor(model: ModelInfo | undefined): ReasoningEffort[] {
+  const meta = model?.reasoning;
+  if (!meta) return [];
+  const listed = (meta.supported_efforts ?? []).filter((value): value is ReasoningEffort => (EFFORTS as readonly string[]).includes(value));
+  const offered = listed.length ? EFFORTS.filter(value => listed.includes(value)) : (['low', 'medium', 'high'] as ReasoningEffort[]);
+  return meta.mandatory ? offered.filter(value => value !== 'none') : offered;
 }
 
 interface Props {
@@ -20,6 +36,8 @@ interface Props {
   loading: boolean;
   disabled?: boolean;
   onChange: (value: string) => void;
+  effort?: ReasoningEffort | '';
+  onEffort?: (value: ReasoningEffort | '') => void;
 }
 
 const SHOWN = 60;
@@ -37,12 +55,13 @@ function ctx(tokens: number): string {
 }
 
 /** Searchable OpenRouter model combobox. Any `vendor/model` id can be typed, so new models work before the list shows them. */
-export function ModelPicker({ id, label, hint, value, fallback, models, loading, disabled, onChange }: Props) {
+export function ModelPicker({ id, label, hint, value, fallback, models, loading, disabled, onChange, effort = '', onEffort }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [hi, setHi] = useState(0);
   const box = useRef<HTMLDivElement>(null);
   const effective = value || fallback;
+  const efforts = onEffort ? effortsFor(models.find(model => model.id === effective)) : [];
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -179,6 +198,16 @@ export function ModelPicker({ id, label, hint, value, fallback, models, loading,
         ) : null}
       </div>
       {hint ? <span className="hint">{hint}</span> : null}
+      {efforts.length ? (
+        <div className={`effort ${disabled ? 'off' : ''}`}>
+          <span className="eyebrow">Reasoning</span>
+          <Seg<ReasoningEffort | 'default'>
+            value={effort || 'default'}
+            onChange={next => !disabled && onEffort?.(next === 'default' ? '' : next)}
+            options={[{ id: 'default', label: 'Auto' }, ...efforts.map(value => ({ id: value, label: value }))]}
+          />
+        </div>
+      ) : null}
       {value ? (
         <button type="button" className="small ghost" style={{ alignSelf: 'flex-start' }} onClick={() => onChange('')}>
           Reset to default

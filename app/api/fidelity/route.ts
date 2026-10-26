@@ -1,5 +1,5 @@
 import { currentRequestId, log, withLogging } from '../../../src/lib/log';
-import { completeLongForm, HttpError, keyFrom, modelsFrom, type Models, parseJson } from '../../../src/lib/openrouter';
+import { completeLongForm, HttpError, keyFrom, modelsFrom, type Models, parseJson, forRole } from '../../../src/lib/openrouter';
 import { webSystemPrompt } from '../../../src/lib/fidelity/irisesweb';
 import { buildTail } from '../../../src/lib/fidelity/tail';
 import { realIsFirst, scoreLikeness, scoreParroting, verdict, type LikenessJudgement } from '../../../src/lib/fidelity/score';
@@ -80,7 +80,7 @@ async function generate(
       );
       const content = (await completeLongForm({
         key,
-        model: models.cheap,
+        ...forRole(models, 'cheap'),
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: tail },
@@ -113,7 +113,7 @@ async function judgePairs(
 
   const content = (await completeLongForm({
     key,
-    model: models.strong,
+    ...forRole(models, 'strong'),
     json: true,
     messages: [
       { role: 'system', content: JUDGE_SYSTEM },
@@ -172,7 +172,7 @@ async function judgePairs(
 async function judgeSketches(key: string, models: Models, drives: string[], sketches: string[], system: string) {
   const content = (await completeLongForm({
     key,
-    model: models.strong,
+    ...forRole(models, 'strong'),
     json: true,
     messages: [
       { role: 'system', content: JUDGE_SYSTEM },

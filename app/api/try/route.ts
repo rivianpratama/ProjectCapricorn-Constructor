@@ -63,7 +63,10 @@ async function handle(request: Request): Promise<Response> {
     });
 
     const envelope = readEnvelope(content);
-    if (!envelope) throw new HttpError(502, 'the model sent no reply');
+    if (!envelope) {
+      log.warn('try envelope unreadable', { content: content.slice(0, 500) });
+      throw new HttpError(502, 'the model sent no reply');
+    }
 
     return Response.json({
       bubbles: envelope.bubbles.map(bubble => bubble.text),

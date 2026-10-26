@@ -15,7 +15,7 @@ export function useModels() {
   const [defaults, setDefaults] = useState<Defaults>({ cheap: 'google/gemini-2.5-flash', strong: 'anthropic/claude-sonnet-4.5' });
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
-  const [choice, setChoice] = useState<ModelChoice>({ cheap: '', strong: '' });
+  const [choice, setChoice] = useState<ModelChoice>({ cheap: '', strong: '', effortCheap: '', effortStrong: '' });
 
   useEffect(() => {
     setChoice(modelStore.get());
