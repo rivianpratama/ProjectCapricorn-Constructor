@@ -2,7 +2,7 @@
 
 # Constructor
 
-**Turn multiple chat exports into one new AI persona**
+**Build AI persona construct composed out of multiple digitized human psyches from chat exports**
 
 Drop WhatsApp or LINE chats and get a SOUL.MD persona files you can drop into your agents.<br><br>
 
@@ -16,6 +16,9 @@ Drop WhatsApp or LINE chats and get a SOUL.MD persona files you can drop into yo
 </div>
 
 > **Inspiration.** The idea comes from **Project Capricorn (Capri)**, the personality construct in *Cyberpunk: Edgerunners 2* that is made of many digitized human psyches combined into one. Read about it on the [Cyberpunk wiki](https://cyberpunk.fandom.com/wiki/Capri). This project is a fan-inspired experiment and is not affiliated with CD PROJEKT RED, Studio Trigger or Arasaka.
+
+> [!WARNING]
+> **Privacy & Consent Disclaimer:** Processing personal chat exports carries inherent privacy concerns. You must acknowledge these risks and ensure you have explicit, informed consent from all parties involved before uploading and analyzing any chat logs.
 
 ## Features
 
@@ -93,11 +96,12 @@ soul-pack/
 
 `npm run sync:baseline` refreshes the pinned snapshots in `vendor/`.
 
-## Privacy
+## Privacy & Consent
 
+- **Explicit consent required:** Only use chat exports where every participant has given explicit consent. You acknowledge all privacy concerns and assume responsibility for uploading personal communications.
 - Your key is sent in an `x-openrouter-key` header per request. "Remember" keeps it in `localStorage`; otherwise it stays in the tab.
 - Names are pseudonymised in the browser before chats are sent to a model. Raw transcripts are dropped once the pack is built.
-- Chat text goes to the models you choose on OpenRouter, under their terms. Only use chats where everyone agreed.
+- Chat text goes to the models you choose on OpenRouter, under their terms.
 
 ## Project structure
 
