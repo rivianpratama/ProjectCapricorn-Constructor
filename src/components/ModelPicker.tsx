@@ -97,7 +97,9 @@ export function ModelPicker({ id, label, hint, value, fallback, models, loading,
     return () => document.removeEventListener('pointerdown', away);
   }, [open, query, rows, hi]);
 
-  useEffect(() => setHi(0), [query]);
+  useEffect(() => {
+    setHi(0);
+  }, [query]);
 
   return (
     <div className="field">

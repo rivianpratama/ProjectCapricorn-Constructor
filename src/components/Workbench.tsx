@@ -53,7 +53,9 @@ const STEPS = ['chats', 'running', 'questions', 'soul', 'done'];
 
 export function Workbench() {
   const [key, setKey] = useState('');
-  useEffect(() => setKey(keyStore.get()), []);
+  useEffect(() => {
+    setKey(keyStore.get());
+  }, []);
 
   const modelState = useModels();
   const panels = useOpenPanels({ key: true, models: true });

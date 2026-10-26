@@ -1,5 +1,5 @@
 import { currentRequestId, log, withLogging } from '../../../src/lib/log';
-import { complete, HttpError, keyFrom, modelsFrom, type Models, parseJson } from '../../../src/lib/openrouter';
+import { completeLongForm, HttpError, keyFrom, modelsFrom, type Models, parseJson } from '../../../src/lib/openrouter';
 import { webSystemPrompt } from '../../../src/lib/fidelity/irisesweb';
 import { buildTail } from '../../../src/lib/fidelity/tail';
 import { realIsFirst, scoreLikeness, scoreParroting, verdict, type LikenessJudgement } from '../../../src/lib/fidelity/score';
@@ -78,7 +78,7 @@ async function generate(
         },
         files,
       );
-      const content = await complete({
+      const content = (await completeLongForm({
         key,
         model: models.cheap,
         messages: [
@@ -86,8 +86,8 @@ async function generate(
           { role: 'user', content: tail },
         ],
         temperature: 0.8,
-        maxTokens: 600,
-      });
+        maxTokens: 2_000,
+      })).content;
       const parsed = parseJson<{ bubbles?: Array<{ text?: string }> }>(content);
       out[next.index] = (parsed.bubbles ?? []).map(bubble => String(bubble?.text ?? '').trim()).filter(Boolean);
     }
@@ -111,7 +111,7 @@ async function judgePairs(
     return [`Pair ${i + 1}`, `A: ${first}`, `B: ${second}`].join('\n');
   });
 
-  const content = await complete({
+  const content = (await completeLongForm({
     key,
     model: models.strong,
     json: true,
@@ -134,8 +134,8 @@ async function judgePairs(
       },
     ],
     temperature: 0.2,
-    maxTokens: 5_000,
-  });
+    maxTokens: 8_000,
+  })).content;
 
   const parsed = parseJson<{
     pairs?: Array<{
@@ -170,7 +170,7 @@ async function judgePairs(
 }
 
 async function judgeSketches(key: string, models: Models, drives: string[], sketches: string[], system: string) {
-  const content = await complete({
+  const content = (await completeLongForm({
     key,
     model: models.strong,
     json: true,
@@ -193,8 +193,8 @@ async function judgeSketches(key: string, models: Models, drives: string[], sket
       },
     ],
     temperature: 0.2,
-    maxTokens: 4_000,
-  });
+    maxTokens: 6_000,
+  })).content;
 
   const parsed = parseJson<{ scores?: number[]; missed?: number[] }>(content);
   const scores = (parsed.scores ?? []).map(rating).filter(score => score > 0);

@@ -4,7 +4,7 @@ import { prompt } from '../../../src/lib/prompts';
 import { parseSoul } from '../../../src/lib/soul/parseSoul';
 import { buildPack } from '../../../src/lib/soul/pack';
 import { sanitizeSoul } from '../../../src/lib/soul/sanitize';
-import { extractSlots, readAdapter, readSlotFile } from '../../../src/lib/soul/slots';
+import { baseSlots } from '../../../src/lib/soul/base';
 
 export const runtime = 'nodejs';
 
@@ -104,23 +104,6 @@ async function handle(request: Request): Promise<Response> {
   } catch (error) {
     return failed(error, 'compose failed');
   }
-}
-
-/** Iris's current slot text, read read-only through the adapter. */
-function baseSlots(): Record<string, string> {
-  const adapter = readAdapter();
-  const out: Record<string, string> = {};
-  for (const key of ['irises', 'irises-web'] as const) {
-    const target = adapter.targets[key];
-    if (!target) continue;
-    for (const file of target.files) {
-      const extracted = extractSlots(readSlotFile(target, file));
-      for (const slot of file.slots) {
-        if (out[slot.soul] === undefined && extracted[slot.id] !== undefined) out[slot.soul] = extracted[slot.id];
-      }
-    }
-  }
-  return out;
 }
 
 async function compose(key: string, models: Models, system: string, user: string): Promise<string> {

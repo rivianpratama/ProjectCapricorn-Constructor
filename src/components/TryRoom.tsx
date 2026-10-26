@@ -71,8 +71,12 @@ export function TryRoom() {
     input.current?.focus();
   }, []);
 
-  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [turns, sending]);
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'end' });
+  }, [turns, sending]);
+  useEffect(() => {
+    return () => clearTimeout(timer.current);
+  }, []);
 
   function push(turn: Turn): void {
     shown.current = [...shown.current, turn];
