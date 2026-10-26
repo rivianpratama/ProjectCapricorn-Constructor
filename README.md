@@ -1,11 +1,10 @@
 <div align="center">
 
-# Constructinator
+# Constructor
 
-**Turn up to six chat exports into one new AI persona.**
+**Turn multiple chat exports into one new AI persona.**
 
-Drop WhatsApp or LINE chats, answer a short questionnaire, and get a Soul Pack: persona files you can drop into Irises and IrisesWeb.<br>
-Bring your own OpenRouter key and pick any model you like.
+Drop WhatsApp or LINE chats and get a SOUL.MD persona files you can drop into your agents.<br>
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?logo=typescript&logoColor=white)
