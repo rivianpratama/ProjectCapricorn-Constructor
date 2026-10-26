@@ -500,10 +500,12 @@ describe('compose route transform', () => {
     const copied = renderSoul({ ...parseSoul(soul), 'web.how': baseSlots()['web.how'] });
     const fresh = '## How you write\n\n' + 'You type in quick lowercase bursts and drop a letter when you hurry. '.repeat(60);
     const systems: string[] = [];
+    const users: string[] = [];
     globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
       if (String(input).includes('/models')) return new Response(JSON.stringify({ data: [] }), { status: 200 });
       const sent = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
       systems.push(sent.messages[0].content);
+      users.push(sent.messages[1].content);
       const content = sent.messages[0].content.includes('transform one slot') ? '```text\n' + fresh + '\n```' : copied;
       return new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] }), {
         status: 200,
@@ -513,6 +515,8 @@ describe('compose route transform', () => {
     const response = await composePost(request('/api/compose', { report, answers: {}, n: 1 }));
     expect(response.status).toBe(200);
     expect(systems.filter(system => system.includes('transform one slot'))).toHaveLength(1);
+    // The rewrite works from Iris's text, never from the copied draft.
+    expect(users.find(user => user.startsWith('Rewrite the slot'))).not.toContain('too close to Iris');
     const data = (await response.json()) as { markdown: string; issues: Array<{ rule: string }> };
     expect(data.issues.some(issue => issue.rule === 'copied-from-iris')).toBe(false);
     expect(data.markdown).toContain('quick lowercase bursts');
@@ -537,6 +541,11 @@ describe('compose route parts', () => {
     expect(users[0]).toMatch(/^Write only these slots, in this order: `iris\.persona`\./);
     expect(users[0]).not.toContain('### web.how');
     expect(users.slice(1).every(user => user.includes('## The person, already written in iris.persona'))).toBe(true);
-    expect(users.find(user => user.includes('`web.persona`'))).toContain('### web.how');
+    const web = users.find(user => user.includes('`web.persona`'))!;
+    expect(web).toContain('### web.how');
+    // The two web slots are aimed under their shared ceiling, not at Iris's length plus fifteen percent.
+    const tops = [...web.matchAll(/Write yours between \d+ and (\d+)/g)].map(match => Number(match[1]));
+    expect(tops).toHaveLength(2);
+    expect(tops[0] + tops[1]).toBeLessThanOrEqual(17_500);
   });
 });

@@ -60,19 +60,20 @@ async function handle(request: Request): Promise<Response> {
     // a "change only this" note makes the model keep the slot and reword a few lines.
     for (let round = 0; round < 3 && current.built.problem.length > 0; round++) {
       try {
-        const copied = current.built.pack ? overCopied(parseSoul(current.markdown) as unknown as Record<string, string>, base) : [];
-        if (copied.length) {
-          const rewritten = await transform(key, models, body, parseSoul(current.markdown), copied as SoulSlot[], base);
-          Object.assign(slots, rewritten);
-        } else {
-          const broken = PARTS.filter(part => part.slots.some(slot => current.built.failing.has(slot)));
-          await Promise.all(
-            (broken.length ? broken : PARTS).map(part => {
-              const notes = current.built.problem.filter(problem => part.slots.some(slot => problem.startsWith(slot)) || !broken.length);
-              return run(part, notes.length ? notes : current.built.problem);
-            }),
-          );
-        }
+        // Copied slots get the rewrite; every other broken part is re-run with its notes, in the same
+        // round, so one kind of problem never uses up the rounds another needed.
+        const copied = (current.built.pack ? overCopied(parseSoul(current.markdown) as unknown as Record<string, string>, base) : []) as SoulSlot[];
+        const others = current.built.problem.filter(problem => !copied.some(slot => problem.startsWith(`${slot}: copied-from-iris`)));
+        const broken = PARTS.filter(part => part.slots.some(slot => current.built.failing.has(slot) && !copied.includes(slot)) && others.length);
+        const fresh = !current.built.pack && !broken.length ? PARTS : broken;
+        const [rewritten] = await Promise.all([
+          copied.length ? transform(key, models, body, parseSoul(current.markdown), copied, base) : Promise.resolve({}),
+          ...fresh.map(part => {
+            const notes = others.filter(problem => part.slots.some(slot => problem.startsWith(slot)));
+            return run(part, notes.length ? notes : others);
+          }),
+        ]);
+        Object.assign(slots, rewritten);
       } catch (error) {
         // A repair that fails to arrive must not cost the soul already in hand.
         if (!best.built.pack) throw error;
@@ -101,35 +102,76 @@ async function handle(request: Request): Promise<Response> {
 }
 
 /**
- * Rewrite each over-copied slot on its own, against Iris's text for that slot. A rewrite that fails or
- * comes back nearly empty is dropped, so the slot keeps its draft.
+ * Rewrite each over-copied slot from Iris's text, not from the draft: the draft is mostly hers, and a
+ * model shown it keeps it. A long slot is cut into runs of paragraphs, each rewritten on its own, so
+ * every call is small enough to answer whole and to rewrite paragraph by paragraph. A slot whose
+ * rewrite fails or comes back nearly empty keeps its draft.
  */
 async function transform(key: string, models: Models, body: Body, soul: Soul, slots: SoulSlot[], base: Record<string, string>): Promise<Partial<Record<SoulSlot, string>>> {
   const system = prompt('phase3b-transform');
+  const persona = slots.includes('iris.persona') ? undefined : soul['iris.persona'];
   const rewritten = await Promise.all(
     slots.map(async slot => {
-      const user = [
-        `Rewrite the slot \`${slot}\`. Iris's version is ${base[slot].length} characters; match that within fifteen percent.`,
-        '',
-        body.report,
-        '',
-        '## Decisions',
-        ...decisions(body),
-        '',
-        `## Iris's ${slot}, the gold standard for depth`,
-        base[slot],
-        '',
-        '## The current draft, too close to Iris',
-        soul[slot],
-      ].join('\n');
-      const text = await compose(key, models, system, user, outputBudget(base[slot].length));
-      const fenced = text.match(/```[a-z]*\n([\s\S]*?)\n```/i);
-      return [slot, (fenced ? fenced[1] : text).trim()] as const;
+      const chunks = paragraphRuns(base[slot], 9_000);
+      const scale = target(slot, base).max / base[slot].length;
+      const pieces = await Promise.all(
+        chunks.map(async (chunk, index) => {
+          const user = [
+            `Rewrite the slot \`${slot}\`${chunks.length > 1 ? `, part ${index + 1} of ${chunks.length}` : ''}. Iris's text below is ${chunk.length} characters; write between ${Math.round(chunk.length * 0.85)} and ${Math.round(chunk.length * scale)}.`,
+            index === 0 ? 'Begin with the slot\'s exact opening line.' : 'This part continues the slot: no opening line, no heading of your own.',
+            '',
+            body.report,
+            '',
+            '## Decisions',
+            ...decisions(body),
+            ...(persona ? ['', '## The person, as already written', persona] : []),
+            '',
+            `## Iris's ${slot}${chunks.length > 1 ? `, part ${index + 1}` : ''}, the gold standard for depth`,
+            chunk,
+          ].join('\n');
+          const text = await compose(key, models, system, user, outputBudget(chunk.length));
+          const fenced = text.match(/```[a-z]*\n([\s\S]*?)\n```/i);
+          return (fenced ? fenced[1] : text).trim();
+        }),
+      );
+      return [slot, pieces.join('\n\n')] as const;
     }),
   );
   return Object.fromEntries(
     rewritten.filter(([slot, text]) => text.length > base[slot].length * 0.3).map(([slot, text]) => [slot, '```text\n' + text + '\n```']),
   );
+}
+
+/** A slot cut at paragraph breaks into runs of about `size` characters. */
+function paragraphRuns(text: string, size: number): string[] {
+  const runs: string[] = [];
+  let run = '';
+  for (const paragraph of text.split(/\n{2,}/)) {
+    if (run && run.length + paragraph.length > size) {
+      runs.push(run);
+      run = '';
+    }
+    run = run ? `${run}\n\n${paragraph}` : paragraph;
+  }
+  if (run) runs.push(run);
+  return runs;
+}
+
+/** Combined ceiling for the two web slots; the rest of the web system prompt takes about twelve thousand. */
+const WEB_CEILING = 17_500;
+
+/**
+ * The length each slot is written to: Iris's length, give or take fifteen percent, except that the
+ * web slots share a ceiling, so their top is scaled to fit it.
+ */
+function target(slot: string, base: Record<string, string>): { min: number; max: number } {
+  const length = base[slot]?.length ?? 0;
+  let max = Math.round(length * 1.15);
+  if (slot === 'web.persona' || slot === 'web.how') {
+    const web = (base['web.persona']?.length ?? 0) + (base['web.how']?.length ?? 0);
+    max = Math.min(max, Math.floor((length / web) * WEB_CEILING));
+  }
+  return { min: Math.round(length * 0.85), max };
 }
 
 interface Part {
@@ -177,7 +219,7 @@ function partMessage(
     ...decisions(body),
     ...(persona ? ['', '## The person, already written in iris.persona', 'Every slot you write is this same person, in the same language and voice.', '', persona] : []),
     ...(own.length
-      ? ['', '## Iris, the gold standard', 'Reference for depth, logic and length only. Every slot you write matches its length and the number of mechanisms it carries, and shares none of its wording or persona.', '', ...own.flatMap(slot => [`### ${slot} (${base[slot].length} characters)`, base[slot], ''])]
+      ? ['', '## Iris, the gold standard', 'Reference for depth, logic and length only. Every slot you write matches its length and the number of mechanisms it carries, and shares none of its wording or persona.', '', ...own.flatMap(slot => [`### ${slot} (Iris: ${base[slot].length} characters. Write yours between ${target(slot, base).min} and ${target(slot, base).max}.)`, base[slot], ''])]
       : []),
     ...(draft.length ? ['', '## Your current draft of these slots', ...draft.flatMap(slot => [`## ${slot}`, (notes.length ? written[slot] : previous[slot])!, ''])] : []),
     ...(notes.length || body.fixes?.length
