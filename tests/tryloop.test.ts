@@ -265,3 +265,30 @@ describe('a scripted five-turn conversation', () => {
     expect(pageState.turns).toBe(texts.length);
   });
 });
+
+describe('readEnvelope fallbacks', () => {
+  it('strips thinking/reasoning tags from models', () => {
+    const raw = '<thought>I will answer joyfully</thought>{"confidence_level":80,"tool_calls":null,"bubbles":[{"text":"hey!"}],"status":null}';
+    const env = readEnvelope(raw);
+    expect(env?.bubbles).toEqual([{ text: 'hey!' }]);
+  });
+
+  it('handles objects with content or message fields', () => {
+    const raw = '{"content":"just checking in"}';
+    const env = readEnvelope(raw);
+    expect(env?.bubbles).toEqual([{ text: 'just checking in' }]);
+  });
+
+  it('handles bubbles formatted as array of message objects', () => {
+    const raw = '{"bubbles":[{"message":"hello there"}]}';
+    const env = readEnvelope(raw);
+    expect(env?.bubbles).toEqual([{ text: 'hello there' }]);
+  });
+
+  it('handles bubbles formatted as a single string', () => {
+    const raw = '{"bubbles":"hey you"}';
+    const env = readEnvelope(raw);
+    expect(env?.bubbles).toEqual([{ text: 'hey you' }]);
+  });
+});
+

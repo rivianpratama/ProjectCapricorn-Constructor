@@ -59,8 +59,10 @@ export function readEnvelope(raw: string): Envelope | null {
   const direct = parseEnvelope(raw);
   if (direct) return direct;
 
-  // 1. Strip <think>...</think> blocks from reasoning models
-  const stripped = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  // 1. Strip <think>...</think>, <thought>...</thought>, <reasoning>...</reasoning> blocks from reasoning models
+  const stripped = raw
+    .replace(/<(?:think|thought|reasoning)>[\s\S]*?(?:<\/(?:think|thought|reasoning)>|$)/gi, '')
+    .trim();
   const withoutThink = parseEnvelope(stripped);
   if (withoutThink) return withoutThink;
 
@@ -68,12 +70,35 @@ export function readEnvelope(raw: string): Envelope | null {
   const sanitized = parseEnvelope(sanitizeJsonStrings(stripped));
   if (sanitized) return sanitized;
 
-  // 3. Fallback for single reply/text/message field
+  // 3. Fallback for single reply/text/message/content/bubbles field
   try {
     const a = stripped.indexOf('{');
     const b = stripped.lastIndexOf('}');
     if (a >= 0 && b > a) {
       const obj = JSON.parse(sanitizeJsonStrings(stripped.slice(a, b + 1))) as Record<string, unknown>;
+      if (Array.isArray(obj.bubbles) && obj.bubbles.length > 0) {
+        const texts = obj.bubbles
+          .map(item =>
+            typeof item === 'string'
+              ? item
+              : typeof (item as { text?: unknown })?.text === 'string'
+                ? ((item as { text: string }).text)
+                : typeof (item as { message?: unknown })?.message === 'string'
+                  ? ((item as { message: string }).message)
+                  : typeof (item as { content?: unknown })?.content === 'string'
+                    ? ((item as { content: string }).content)
+                    : null,
+          )
+          .filter((t): t is string => typeof t === 'string' && t.trim().length > 0);
+        if (texts.length) {
+          return {
+            confidence_level: 70,
+            tool_calls: null,
+            bubbles: texts.map(text => ({ text: text.trim() })),
+            status: null,
+          };
+        }
+      }
       const text =
         typeof obj.reply === 'string'
           ? obj.reply
@@ -83,7 +108,11 @@ export function readEnvelope(raw: string): Envelope | null {
               ? obj.message
               : typeof obj.response === 'string'
                 ? obj.response
-                : null;
+                : typeof obj.content === 'string'
+                  ? obj.content
+                  : typeof obj.bubbles === 'string'
+                    ? obj.bubbles
+                    : null;
       if (text && text.trim()) {
         return {
           confidence_level: 70,

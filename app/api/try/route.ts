@@ -1,5 +1,5 @@
 import { currentRequestId, log, withLogging } from '../../../src/lib/log';
-import { completeDetailed, HttpError, keyFrom, modelsFrom } from '../../../src/lib/openrouter';
+import { completeDetailed, forRole, HttpError, keyFrom, modelsFrom } from '../../../src/lib/openrouter';
 import { webSystemPrompt } from '../../../src/lib/fidelity/irisesweb';
 import {
   advanceTryState,
@@ -52,14 +52,14 @@ async function handle(request: Request): Promise<Response> {
 
     const { content, usage } = await completeDetailed({
       key,
-      model: models.strong,
+      ...forRole(models, 'strong'),
       messages: [
         { role: 'system', content: webSystemPrompt(files) },
         ...history,
         { role: 'user', content: tail },
       ],
       temperature: 0.8,
-      maxTokens: 2_000,
+      maxTokens: 4_000,
     });
 
     const envelope = readEnvelope(content);

@@ -109,7 +109,11 @@ export function TryRoom() {
     const past = history.current;
     history.current = [...past, { role: 'them', text: message }];
     try {
-      const reply = await api<Reply>('/api/try', keyStore.get(), {
+      const activeKey = keyStore.get().trim() || key.trim();
+      if (!activeKey) {
+        throw new Error('Enter your OpenRouter key to chat');
+      }
+      const reply = await api<Reply>('/api/try', activeKey, {
         files,
         text: message,
         state: live.current,
@@ -134,6 +138,11 @@ export function TryRoom() {
   function submit(): void {
     const value = text.trim();
     if (!value || !files) return;
+    const activeKey = keyStore.get().trim() || key.trim();
+    if (!activeKey) {
+      setError('Enter your OpenRouter key to chat');
+      return;
+    }
     setText('');
     push({ role: 'them', bubbles: [value] });
     run.current = [...run.current, value];
@@ -264,7 +273,7 @@ export function TryRoom() {
                   if (event.key === 'Enter') submit();
                 }}
               />
-              <button className="primary" disabled={!text.trim() || !key} onClick={submit}>Send</button>
+              <button className="primary" disabled={!text.trim() || !(key.trim() || keyStore.get().trim())} onClick={submit}>Send</button>
             </div>
           </section>
         </div>
