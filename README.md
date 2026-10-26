@@ -31,7 +31,7 @@ Requires Node.js 20+.
 
 ```bash
 git clone https://github.com/rivianpratama/ProjectCapricorn-Constructor
-cd Constructinator
+cd ProjectCapricorn-Constructor
 npm install
 npm run dev
 ```
