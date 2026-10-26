@@ -5,3 +5,6 @@
  * otherwise.
  */
 process.env.LOG_LEVEL ??= 'silent';
+
+// Fixture souls are a few lines long; the depth check against Iris is covered in lint.test.ts.
+process.env.SOUL_DEPTH_CHECK = 'off';

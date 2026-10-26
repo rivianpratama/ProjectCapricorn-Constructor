@@ -137,7 +137,7 @@ function rank(built: Built): number {
 function build(markdown: string, body: Body): Built {
   let pack: ReturnType<typeof buildPack>;
   try {
-    pack = buildPack(parseSoul(markdown), markdown, { n: body.n, report: body.report, depth: !body.previous });
+    pack = buildPack(parseSoul(markdown), markdown, { n: body.n, report: body.report, depth: !body.previous && process.env.SOUL_DEPTH_CHECK !== 'off' });
   } catch (error) {
     return { pack: null, problem: [error instanceof Error ? error.message : 'the soul did not parse'] };
   }
