@@ -44,20 +44,14 @@ export function estimateRun(chats: Message[][], mode: Phase1Mode = 'one-shot'): 
 
   for (const messages of chats) {
     const { training } = splitHoldout(messages);
-    if (mode === 'agentic') {
-      const tokens = messageTokens(training);
-      bulk.input += Math.round(tokens * 0.35 + 40_000);
+    const chunks = phase1Chunks(training, mode);
+    for (const chunk of chunks) {
+      bulk.input += PROMPT.phase1 + HEADER + messageTokens(chunk);
       bulk.output += OUT.engram;
-    } else {
-      const chunks = phase1Chunks(training, mode);
-      for (const chunk of chunks) {
-        bulk.input += PROMPT.phase1 + HEADER + messageTokens(chunk);
-        bulk.output += OUT.engram;
-      }
-      if (chunks.length > 1) {
-        bulk.input += PROMPT.merge + chunks.length * OUT.engram;
-        bulk.output += OUT.engram;
-      }
+    }
+    if (chunks.length > 1) {
+      bulk.input += PROMPT.merge + chunks.length * OUT.engram;
+      bulk.output += OUT.engram;
     }
   }
 

@@ -28,16 +28,8 @@ describe('phase 1 modes', () => {
     expect(chunks.at(-1)?.at(-1)?.id).toBe(2499);
   });
 
-  it('sends the whole chat for experimental agentic mode', () => {
-    const messages = chat(2500);
-    const chunks = phase1Chunks(messages, 'agentic');
-    expect(chunks).toHaveLength(1);
-    expect(chunks[0]).toBe(messages);
-  });
-
-  it('treats a chat that already fits one chunk the same in all modes', () => {
+  it('treats a chat that already fits one chunk the same in both modes', () => {
     const messages = chat(100);
     expect(phase1Chunks(messages, 'one-shot')).toEqual(phase1Chunks(messages, 'chunked'));
-    expect(phase1Chunks(messages, 'agentic')).toEqual(phase1Chunks(messages, 'one-shot'));
   });
 });

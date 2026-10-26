@@ -136,11 +136,7 @@ export function Workbench() {
     running.current = true;
     setError('');
     setStage('running');
-    addLog(
-      `Building ${drafts.length} engram${drafts.length === 1 ? '' : 's'}${
-        mode === 'one-shot' ? ', one shot per chat' : mode === 'agentic' ? ', agentic (experimental)' : ''
-      }.`,
-    );
+    addLog(`Building ${drafts.length} engram${drafts.length === 1 ? '' : 's'}${mode === 'one-shot' ? ', one shot per chat' : ''}.`);
     const chats = drafts.map((draft, i) => ({ draft, label: `chat-${i + 1}` }));
     setLanes([
       ...chats.map(chat => ({ id: chat.draft.id, label: chat.label, value: 0 })),
@@ -405,26 +401,6 @@ export function Workbench() {
                     onChange={() => setMode('chunked')}
                   />
                   <span>Chunked</span>
-                </label>
-                <label className="check" htmlFor="mode-agentic">
-                  <input
-                    id="mode-agentic"
-                    type="radio"
-                    name="mode"
-                    value="agentic"
-                    checked={mode === 'agentic'}
-                    disabled={busy}
-                    onChange={() => setMode('agentic')}
-                  />
-                  <span className="row" style={{ gap: 6 }}>
-                    Agentic
-                    <span
-                      className="chip off"
-                      style={{ height: 18, padding: '0 6px', font: '500 10px/1 var(--mono)', textTransform: 'uppercase', letterSpacing: '.06em' }}
-                    >
-                      Experimental
-                    </span>
-                  </span>
                 </label>
               </div>
             </section>

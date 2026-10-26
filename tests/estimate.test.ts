@@ -33,12 +33,6 @@ describe('estimate', () => {
     expect(estimateRun([chat(5000)])).toEqual(oneShot);
   });
 
-  it('computes agentic estimate from token fraction plus budget', () => {
-    const agentic = estimateRun([chat(5000)], 'agentic');
-    expect(agentic.bulk.input).toBeGreaterThan(0);
-    expect(agentic.bulk.output).toBe(4000);
-  });
-
   it('matches the chunked estimate when a chat already fits one chunk', () => {
     expect(estimateRun([chat(100)], 'one-shot')).toEqual(estimateRun([chat(100)], 'chunked'));
   });
