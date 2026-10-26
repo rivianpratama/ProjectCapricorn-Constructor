@@ -19,21 +19,28 @@ describe('estimate', () => {
   });
 
   it('grows with chat size and adds merge calls for chunked chats', () => {
-    const small = estimateRun([chat(100)]);
-    const big = estimateRun([chat(5000)]);
+    const small = estimateRun([chat(100)], 'chunked');
+    const big = estimateRun([chat(5000)], 'chunked');
     expect(big.bulk.input).toBeGreaterThan(small.bulk.input);
     expect(big.bulk.output).toBeGreaterThan(small.bulk.output);
   });
 
-  it('charges one call and no merge when phase 1 is one-shot', () => {
-    const chunked = estimateRun([chat(5000)]);
+  it('charges one call and no merge when phase 1 is one-shot (default)', () => {
+    const chunked = estimateRun([chat(5000)], 'chunked');
     const oneShot = estimateRun([chat(5000)], 'one-shot');
     expect(oneShot.bulk.input).toBeLessThan(chunked.bulk.input);
     expect(oneShot.bulk.output).toBeLessThan(chunked.bulk.output);
+    expect(estimateRun([chat(5000)])).toEqual(oneShot);
+  });
+
+  it('computes agentic estimate from token fraction plus budget', () => {
+    const agentic = estimateRun([chat(5000)], 'agentic');
+    expect(agentic.bulk.input).toBeGreaterThan(0);
+    expect(agentic.bulk.output).toBe(4000);
   });
 
   it('matches the chunked estimate when a chat already fits one chunk', () => {
-    expect(estimateRun([chat(100)], 'one-shot')).toEqual(estimateRun([chat(100)]));
+    expect(estimateRun([chat(100)], 'one-shot')).toEqual(estimateRun([chat(100)], 'chunked'));
   });
 
   it('grows with the number of chats', () => {

@@ -13,23 +13,31 @@ const chat = (count: number): Message[] =>
   }));
 
 describe('phase 1 modes', () => {
-  it('chunks a long chat by default', () => {
+  it('sends the whole chat in one shot by default', () => {
     const messages = chat(2500);
     const chunks = phase1Chunks(messages);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0]).toBe(messages);
+  });
+
+  it('chunks a long chat when chunked mode is selected', () => {
+    const messages = chat(2500);
+    const chunks = phase1Chunks(messages, 'chunked');
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks[0]).toHaveLength(1200);
     expect(chunks.at(-1)?.at(-1)?.id).toBe(2499);
   });
 
-  it('sends the whole chat in one shot', () => {
+  it('sends the whole chat for experimental agentic mode', () => {
     const messages = chat(2500);
-    const chunks = phase1Chunks(messages, 'one-shot');
+    const chunks = phase1Chunks(messages, 'agentic');
     expect(chunks).toHaveLength(1);
     expect(chunks[0]).toBe(messages);
   });
 
-  it('treats a chat that already fits one chunk the same in both modes', () => {
+  it('treats a chat that already fits one chunk the same in all modes', () => {
     const messages = chat(100);
     expect(phase1Chunks(messages, 'one-shot')).toEqual(phase1Chunks(messages, 'chunked'));
+    expect(phase1Chunks(messages, 'agentic')).toEqual(phase1Chunks(messages, 'one-shot'));
   });
 });

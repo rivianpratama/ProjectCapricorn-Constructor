@@ -7,7 +7,7 @@ import { api, type ApiError, keyStore, packStore } from '../lib/client/api';
 import { useModels } from '../lib/client/useModels';
 import { estimateCost, estimateRun, formatCost, formatTokens } from '../lib/client/estimate';
 import { draftFromFile, draftMessages, type Draft } from '../lib/client/drafts';
-import { phase1Chunks } from '../lib/pipeline/phase1';
+import { phase1Chunks, type Phase1Mode } from '../lib/pipeline/phase1';
 import type { Questionnaire } from '../lib/schema/questionnaire';
 import type { PackFile } from '../lib/soul/pack';
 import { ChatCard } from './ChatCard';
@@ -67,7 +67,7 @@ export function Workbench() {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [dropError, setDropError] = useState('');
   const [consent, setConsent] = useState(false);
-  const [oneShot, setOneShot] = useState(false);
+  const [mode, setMode] = useState<Phase1Mode>('one-shot');
   const [stage, setStage] = useState<Stage>('chats');
   const [error, setError] = useState('');
   const [lanes, setLanes] = useState<Lane[]>([]);
@@ -136,7 +136,11 @@ export function Workbench() {
     running.current = true;
     setError('');
     setStage('running');
-    addLog(`Building ${drafts.length} engram${drafts.length === 1 ? '' : 's'}${oneShot ? ', one shot per chat' : ''}.`);
+    addLog(
+      `Building ${drafts.length} engram${drafts.length === 1 ? '' : 's'}${
+        mode === 'one-shot' ? ', one shot per chat' : mode === 'agentic' ? ', agentic (experimental)' : ''
+      }.`,
+    );
     const chats = drafts.map((draft, i) => ({ draft, label: `chat-${i + 1}` }));
     setLanes([
       ...chats.map(chat => ({ id: chat.draft.id, label: chat.label, value: 0 })),
@@ -158,7 +162,7 @@ export function Workbench() {
             const pseudoTraining = pseudonymise(training, chat.draft.subject);
             statsByChat[chatIndex] = analyse(pseudoTraining, chat.draft.subject);
             const pseudoHoldout = pseudonymise(heldout, chat.draft.subject);
-            const chunks = phase1Chunks(pseudoTraining, oneShot ? 'one-shot' : 'chunked');
+            const chunks = phase1Chunks(pseudoTraining, mode);
             let finished = 0;
             if (chunks.length === 1) setLane(chat.draft.id, 10);
 
@@ -170,6 +174,7 @@ export function Workbench() {
                   subject: chat.draft.subject,
                   messages: chunk,
                   stats: analyse(chunk, chat.draft.subject),
+                  mode,
                   chunk: chunks.length > 1 ? { index: ci + 1, count: chunks.length } : undefined,
                 });
                 finished += 1;
@@ -306,9 +311,9 @@ export function Workbench() {
   const estimate = useMemo(
     () =>
       drafts.length && stage === 'chats'
-        ? estimateRun(drafts.map(draftMessages), oneShot ? 'one-shot' : 'chunked')
+        ? estimateRun(drafts.map(draftMessages), mode)
         : null,
-    [drafts, stage, oneShot],
+    [drafts, stage, mode],
   );
   const { models, defaults, choice } = modelState;
   const price = (id: string) => models.find(model => model.id === id);
@@ -368,9 +373,50 @@ export function Workbench() {
                   <input id="consent" type="checkbox" checked={consent} disabled={busy} onChange={event => setConsent(event.target.checked)} />
                   <span>Everyone in these chats agreed</span>
                 </label>
-                <label className="check" htmlFor="one-shot">
-                  <input id="one-shot" type="checkbox" checked={oneShot} disabled={busy} onChange={event => setOneShot(event.target.checked)} />
+                <div className="divider" />
+                <label className="check" htmlFor="mode-one-shot">
+                  <input
+                    id="mode-one-shot"
+                    type="radio"
+                    name="mode"
+                    value="one-shot"
+                    checked={mode === 'one-shot'}
+                    disabled={busy}
+                    onChange={() => setMode('one-shot')}
+                  />
                   <span>One-shot each chat</span>
+                </label>
+                <label className="check" htmlFor="mode-agentic">
+                  <input
+                    id="mode-agentic"
+                    type="radio"
+                    name="mode"
+                    value="agentic"
+                    checked={mode === 'agentic'}
+                    disabled={busy}
+                    onChange={() => setMode('agentic')}
+                  />
+                  <span className="row" style={{ gap: 6 }}>
+                    Agentic
+                    <span
+                      className="chip off"
+                      style={{ height: 18, padding: '0 6px', font: '500 10px/1 var(--mono)', textTransform: 'uppercase', letterSpacing: '.06em' }}
+                    >
+                      Experimental
+                    </span>
+                  </span>
+                </label>
+                <label className="check" htmlFor="mode-chunked">
+                  <input
+                    id="mode-chunked"
+                    type="radio"
+                    name="mode"
+                    value="chunked"
+                    checked={mode === 'chunked'}
+                    disabled={busy}
+                    onChange={() => setMode('chunked')}
+                  />
+                  <span>Chunked</span>
                 </label>
               </div>
             </section>

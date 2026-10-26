@@ -38,20 +38,26 @@ export function messageTokens(messages: Message[]): number {
 }
 
 /** Tokens for the whole build, from the chat ranges as they will be sent. Approximate by design. */
-export function estimateRun(chats: Message[][], mode: Phase1Mode = 'chunked'): Estimate {
+export function estimateRun(chats: Message[][], mode: Phase1Mode = 'one-shot'): Estimate {
   const bulk: Usage = { input: 0, output: 0 };
   const strong: Usage = { input: 0, output: 0 };
 
   for (const messages of chats) {
     const { training } = splitHoldout(messages);
-    const chunks = phase1Chunks(training, mode);
-    for (const chunk of chunks) {
-      bulk.input += PROMPT.phase1 + HEADER + messageTokens(chunk);
+    if (mode === 'agentic') {
+      const tokens = messageTokens(training);
+      bulk.input += Math.round(tokens * 0.35 + 40_000);
       bulk.output += OUT.engram;
-    }
-    if (chunks.length > 1) {
-      bulk.input += PROMPT.merge + chunks.length * OUT.engram;
-      bulk.output += OUT.engram;
+    } else {
+      const chunks = phase1Chunks(training, mode);
+      for (const chunk of chunks) {
+        bulk.input += PROMPT.phase1 + HEADER + messageTokens(chunk);
+        bulk.output += OUT.engram;
+      }
+      if (chunks.length > 1) {
+        bulk.input += PROMPT.merge + chunks.length * OUT.engram;
+        bulk.output += OUT.engram;
+      }
     }
   }
 

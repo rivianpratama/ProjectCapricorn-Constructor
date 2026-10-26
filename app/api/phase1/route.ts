@@ -5,6 +5,7 @@ import { transcriptFor } from '../../../src/lib/pipeline/transcript';
 import { parseEngramDetailed, type Engram, type FindingSummary } from '../../../src/lib/schema/engram';
 import { verifyEvidence } from '../../../src/lib/pipeline/quotes';
 import type { ChatStats, Message } from '../../../src/lib/chats/types';
+import type { Phase1Mode } from '../../../src/lib/pipeline/phase1';
 
 export const runtime = 'nodejs';
 
@@ -17,6 +18,7 @@ interface Body {
   messages: Message[];
   stats: ChatStats;
   chunk?: { index: number; count: number };
+  mode?: Phase1Mode;
 }
 
 /** The finding shape from the evidence contract, repeated whenever the model has to try again. */
@@ -88,6 +90,7 @@ async function handle(request: Request): Promise<Response> {
     const engram = verdict.engram;
     log.info('engram built', {
       chat: body.chat,
+      mode: body.mode ?? 'one-shot',
       chunk: body.chunk,
       messages: body.messages.length,
       findings: engram.findings.length,
