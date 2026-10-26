@@ -384,7 +384,27 @@ export function Workbench() {
                     disabled={busy}
                     onChange={() => setMode('one-shot')}
                   />
-                  <span>One-shot each chat</span>
+                  <span className="row" style={{ gap: 6 }}>
+                    One-shot each chat
+                    <span
+                      className="chip"
+                      style={{ height: 18, padding: '0 6px', font: '500 10px/1 var(--mono)', textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--muted)' }}
+                    >
+                      Recommended
+                    </span>
+                  </span>
+                </label>
+                <label className="check" htmlFor="mode-chunked">
+                  <input
+                    id="mode-chunked"
+                    type="radio"
+                    name="mode"
+                    value="chunked"
+                    checked={mode === 'chunked'}
+                    disabled={busy}
+                    onChange={() => setMode('chunked')}
+                  />
+                  <span>Chunked</span>
                 </label>
                 <label className="check" htmlFor="mode-agentic">
                   <input
@@ -405,18 +425,6 @@ export function Workbench() {
                       Experimental
                     </span>
                   </span>
-                </label>
-                <label className="check" htmlFor="mode-chunked">
-                  <input
-                    id="mode-chunked"
-                    type="radio"
-                    name="mode"
-                    value="chunked"
-                    checked={mode === 'chunked'}
-                    disabled={busy}
-                    onChange={() => setMode('chunked')}
-                  />
-                  <span>Chunked</span>
                 </label>
               </div>
             </section>
