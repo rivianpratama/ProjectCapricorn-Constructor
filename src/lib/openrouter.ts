@@ -562,22 +562,72 @@ export async function completeLongForm(options: CompletionOptions): Promise<Deta
       log.warn('minimal-reasoning retry failed', { model: options.model ?? MODELS.strong, error: retryError });
     }
   } else if (result.truncated) {
-    try {
-      log.info('retrying a cut-off answer', { model: options.model ?? MODELS.strong, why: result.truncated.reason });
-      const retried = await requestCompletion({
-        ...options,
-        reasoning: reasoning ? await reasoningFloor(options.model ?? MODELS.strong) : undefined,
-        temperature: 0.2,
-      });
-      // Only the retry's diagnosis matters, never the original: that one was cut off by design.
-      if (retried.empty) log.warn('cut-off retry came back empty', { model: options.model ?? MODELS.strong, why: retried.empty.reason });
-      else if (!retried.truncated) result = retried;
-    } catch (retryError) {
-      log.warn('cut-off retry failed', { model: options.model ?? MODELS.strong, error: retryError });
-    }
+    result = await continueCutOff(options, result);
   }
   if (result.empty) throw new HttpError(502, `${options.model ?? MODELS.strong}: ${result.empty.reason}`);
   return result;
+}
+
+/** How many times a cut-off answer is resumed before it is returned as it stands. */
+export const MAX_CONTINUATIONS = 3;
+
+const CONTINUE = [
+  'Your answer was cut off by the output limit. Continue it from exactly where it stopped, mid-word or',
+  'mid-sentence if that is where it ended. Do not repeat anything already written, do not restart, and add no',
+  'preamble: your reply is pasted straight onto the end of the text above.',
+].join(' ');
+
+/**
+ * Resume a cut-off answer instead of regenerating it: the text so far goes back as the assistant turn and
+ * the model writes only the rest, at its lowest reasoning, since the thinking was done the first time. Each
+ * piece is appended (minus any overlap the model repeats), so no generated token is thrown away.
+ */
+async function continueCutOff(options: CompletionOptions, first: Detailed): Promise<Detailed> {
+  const model = options.model ?? MODELS.strong;
+  let result = first;
+  for (let round = 0; round < MAX_CONTINUATIONS && result.truncated; round++) {
+    try {
+      log.info('continuing a cut-off answer', { model, round: round + 1, contentChars: result.content.length, why: result.truncated.reason });
+      const next = await requestCompletion({
+        ...options,
+        messages: [...options.messages, { role: 'assistant', content: result.content }, { role: 'user', content: CONTINUE }],
+        reasoning: options.reasoning || first.reasoningTokens ? await reasoningFloor(model) : undefined,
+        temperature: Math.min(options.temperature ?? 0.4, 0.4),
+      });
+      if (next.empty) {
+        log.warn('continuation came back empty', { model, why: next.empty.reason });
+        break;
+      }
+      result = {
+        ...next,
+        content: joinContinuation(result.content, next.content),
+        usage: { prompt: result.usage.prompt + next.usage.prompt, completion: result.usage.completion + next.usage.completion },
+        reasoningTokens: result.reasoningTokens + next.reasoningTokens,
+      };
+    } catch (error) {
+      log.warn('continuation failed; keeping the answer so far', { model, error });
+      break;
+    }
+  }
+  return result;
+}
+
+/**
+ * Stitch a continuation onto the text it continues. A model often restates the last line or two before
+ * going on, so the longest overlap between the tail and the start of the piece is dropped.
+ */
+export function joinContinuation(head: string, piece: string): string {
+  const tail = head.slice(-2000);
+  for (let size = Math.min(tail.length, piece.length); size >= 12; size--) {
+    if (tail.endsWith(piece.slice(0, size))) return head + piece.slice(size);
+  }
+  // A restated last line that the cut had left half-written ("half a rep" then "half a report, ...").
+  const line = head.slice(head.lastIndexOf('\n') + 1);
+  if (line.trim().length >= 8 && piece.startsWith(line)) return head.slice(0, head.length - line.length) + piece;
+  // Content arrives trimmed, so a cut that fell on a space or a line break lost it.
+  if (/^[#*>-]|^```|^\d+\./.test(piece)) return `${head}\n${piece}`;
+  if (/[.,;:!?)\]]$/.test(head) && /^[\p{L}\p{N}(]/u.test(piece)) return `${head} ${piece}`;
+  return head + piece;
 }
 
 export async function complete(options: CompletionOptions): Promise<string> {

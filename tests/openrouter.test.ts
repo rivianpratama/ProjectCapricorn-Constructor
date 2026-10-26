@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { complete, completeDetailed, completeLongForm, fitMessages, reasoningFloor, reasoningFor, requestCompletion } from '../src/lib/openrouter';
+import { complete, completeDetailed, completeLongForm, fitMessages, joinContinuation, MAX_CONTINUATIONS, reasoningFloor, reasoningFor, requestCompletion } from '../src/lib/openrouter';
 
 const original = globalThis.fetch;
 const asks = [{ role: 'user' as const, content: 'hello' }];
@@ -87,16 +87,36 @@ describe('completeLongForm with a cut-off answer', () => {
     return bodies;
   }
 
-  it('retries once, because a document that stops mid-section is worse than a second call', async () => {
+  it('continues a cut-off answer from where it stopped instead of starting over', async () => {
     const bodies = scripted([
-      { content: '## 1. Context\nhalf a report', finish_reason: 'length' },
-      { content: '## 1. Context\nwhole report', finish_reason: 'stop' },
+      { content: '## 1. Context\nhalf a rep', finish_reason: 'length' },
+      { content: 'half a report, and the rest', finish_reason: 'stop' },
     ]);
     const result = await completeLongForm({ key: 'sk-test', messages: asks, model: 'deepseek/deepseek-v4.1-flash' });
-    expect(result.content).toBe('## 1. Context\nwhole report');
+    expect(result.content).toBe('## 1. Context\nhalf a report, and the rest');
     expect(result.truncated).toBeUndefined();
     expect(bodies).toHaveLength(2);
-    expect(bodies[1].temperature).toBe(0.2);
+    const messages = bodies[1].messages as Array<{ role: string; content: string }>;
+    expect(messages.at(-2)).toEqual({ role: 'assistant', content: '## 1. Context\nhalf a rep' });
+    expect(messages.at(-1)?.content).toMatch(/Continue it from exactly where it stopped/);
+  });
+
+  it('stops continuing after the limit and returns what it has', async () => {
+    const bodies = scripted([{ content: 'piece ', finish_reason: 'length' }]);
+    const result = await completeLongForm({ key: 'sk-test', messages: asks });
+    expect(bodies).toHaveLength(1 + MAX_CONTINUATIONS);
+    expect(result.truncated).toBeDefined();
+    expect(result.content).toBe('piece'.repeat(1 + MAX_CONTINUATIONS));
+  });
+
+  it('puts back the space or line break a trimmed cut lost', () => {
+    expect(joinContinuation('the end of it.', 'Then more')).toBe('the end of it. Then more');
+    expect(joinContinuation('a paragraph', '## Next')).toBe('a paragraph\n## Next');
+    expect(joinContinuation('mid wo', 'rd here')).toBe('mid word here');
+  });
+
+  it('drops the overlap a continuation repeats', () => {
+    expect(joinContinuation('the first line\nthe second li', 'the second line\nthe third')).toBe('the first line\nthe second line\nthe third');
   });
 
   it('keeps the cut-off answer when the retry is cut off too, and flags it', async () => {

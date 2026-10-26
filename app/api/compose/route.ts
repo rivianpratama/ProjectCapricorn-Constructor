@@ -85,7 +85,7 @@ async function handle(request: Request): Promise<Response> {
 
     // Lint issues the model could not clear are shown as warnings beside the pack, not as a failed build.
     const { markdown, built } = best;
-    if (!built.pack) throw new HttpError(502, `${built.problem[0]} (after two attempts)`);
+    if (!built.pack) throw new HttpError(502, `${built.problem[0]} (after the repair rounds)`);
     if (built.problem.length) log.warn('soul shipped with issues', { problems: built.problem.length, first: built.problem[0] });
     const pack = built.pack;
 
