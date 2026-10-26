@@ -4,7 +4,9 @@
 
 **Turn multiple chat exports into one new AI persona**
 
-Drop WhatsApp or LINE chats and get a SOUL.MD persona files you can drop into your agents.<br>
+Drop WhatsApp or LINE chats and get a SOUL.MD persona files you can drop into your agents.<br><br>
+
+<img src="public/constructor.jpg" alt="Constructor" width="480"><br><br>
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6?logo=typescript&logoColor=white)
