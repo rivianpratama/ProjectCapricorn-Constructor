@@ -2,9 +2,9 @@
 
 # Constructor
 
-**Build AI persona construct composed out of multiple digitized human psyches from chat exports**
+**Build an AI persona construct from multiple digitized human psyches**
 
-Drop WhatsApp or LINE chats and get a SOUL.MD persona files you can drop into your agents.<br><br>
+Drop WhatsApp or LINE chats and get drop-in SOUL.md persona files for your agents.<br><br>
 
 <img src="public/constructor.jpg" alt="Constructor" width="480"><br><br>
 
@@ -18,7 +18,7 @@ Drop WhatsApp or LINE chats and get a SOUL.MD persona files you can drop into yo
 > **Inspiration.** The idea comes from **Project Capricorn (Capri)**, the personality construct in *Cyberpunk: Edgerunners 2* that is made of many digitized human psyches combined into one. Read about it on the [Cyberpunk wiki](https://cyberpunk.fandom.com/wiki/Capri). This project is a fan-inspired experiment and is not affiliated with CD PROJEKT RED, Studio Trigger or Arasaka.
 
 > [!WARNING]
-> **Privacy & Consent Disclaimer:** Processing personal chat exports carries inherent privacy concerns. You must acknowledge these risks and ensure you have explicit, informed consent from all parties involved before uploading and analyzing any chat logs.
+> **Privacy & Consent:** Processing chat logs carries privacy risks. Ensure you have explicit consent from all parties involved before uploading any exports.
 
 ## Features
 
