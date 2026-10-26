@@ -43,15 +43,18 @@ async function handle(request: Request): Promise<Response> {
           ...Object.entries(body.answers ?? {}).map(([id, answer]) => `- ${id}: ${answer}`),
         ].join('\n')
       : [
-          'The engram report follows, then the decisions the owner made, then Iris as it stands.',
+          'The engram report follows, then the decisions the owner made, then the one Iris slot that carries a tool contract.',
           '',
           body.report,
           '',
           '## Decisions',
           ...Object.entries(body.answers ?? {}).map(([id, answer]) => `- ${id}: ${answer}`),
           '',
-          '## Iris as it stands',
-          ...Object.entries(baseSlots()).flatMap(([slot, text]) => [`### ${slot}`, text, '']),
+          // Only the language slot goes in: it carries the tool contract. The rest of Iris stays out of the
+          // model's view, because a model shown her text copies it whatever the prompt says.
+          '## Iris, language slot only',
+          `### iris.language`,
+          baseSlots()['iris.language'] ?? '',
         ].join('\n');
 
     const system = prompt('phase3b');

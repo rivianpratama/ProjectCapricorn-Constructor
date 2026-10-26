@@ -15,9 +15,9 @@ export interface Estimate {
 }
 
 /** Fixed prompt sizes in tokens (the prompts/*.md files at about 4 bytes per token) and typical output sizes. */
-const PROMPT = { phase1: 3800, merge: 400, phase2: 2400, phase3a: 320, phase3b: 1400 };
+const PROMPT = { phase1: 3800, merge: 400, phase2: 2400, phase3a: 320, phase3b: 2400 };
 const OUT = { engram: 4000, report: 5000, questions: 1500, soul: 9000 };
-const BASE_SLOTS = 6000;
+const BASE_SLOTS = 600;
 const HEADER = 150;
 
 /** Rough token count: about 4 characters per token for Latin text, one per character for everything else. */
