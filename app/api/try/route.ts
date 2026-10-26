@@ -1,5 +1,15 @@
 import { currentRequestId, log, withLogging } from '../../../src/lib/log';
-import { completeDetailed, forRole, HttpError, keyFrom, modelsFrom } from '../../../src/lib/openrouter';
+import {
+  forRole,
+  HttpError,
+  keyFrom,
+  modelsFrom,
+  reasoningFloor,
+  requestCompletion,
+  type ChatMessage,
+  type Detailed,
+  type ReasoningOptions,
+} from '../../../src/lib/openrouter';
 import { webSystemPrompt } from '../../../src/lib/fidelity/irisesweb';
 import {
   advanceTryState,
@@ -50,21 +60,34 @@ async function handle(request: Request): Promise<Response> {
         content: turn.text,
       }));
 
-    const { content, usage } = await completeDetailed({
-      key,
-      ...forRole(models, 'strong'),
-      messages: [
-        { role: 'system', content: webSystemPrompt(files) },
-        ...history,
-        { role: 'user', content: tail },
-      ],
-      temperature: 0.8,
-      maxTokens: 4_000,
-    });
+    const messages: ChatMessage[] = [
+      { role: 'system', content: webSystemPrompt(files) },
+      ...history,
+      { role: 'user', content: tail },
+    ];
 
-    const envelope = readEnvelope(content);
+    // IrisesWeb holds the reply to its envelope with JSON mode. If the first answer is empty or not an
+    // envelope (a reasoning model spent its budget, or copied the plain-line history), one retry runs
+    // at the least reasoning the model accepts. A second failure is a real failure.
+    const { model, reasoning } = forRole(models, 'strong');
+    const ask = (temperature: number, effort?: ReasoningOptions): Promise<Detailed> =>
+      requestCompletion({ key, model, reasoning: effort ?? reasoning, json: true, messages, temperature, maxTokens: 4_000 });
+    let attempt = await ask(0.8);
+    let envelope = attempt.empty ? null : readEnvelope(attempt.content);
+    let usage = attempt.usage;
     if (!envelope) {
-      log.warn('try envelope unreadable', { content: content.slice(0, 500) });
+      log.warn('try reply unusable, retrying', {
+        why: attempt.empty?.reason ?? 'not an envelope',
+        chars: attempt.content.length,
+        head: attempt.content.slice(0, 200),
+      });
+      attempt = await ask(0.4, await reasoningFloor(model));
+      envelope = attempt.empty ? null : readEnvelope(attempt.content);
+      usage = { prompt: usage.prompt + attempt.usage.prompt, completion: usage.completion + attempt.usage.completion };
+    }
+    if (!envelope) {
+      if (attempt.empty) throw new HttpError(502, `${model}: ${attempt.empty.reason}`);
+      log.warn('try envelope unreadable', { chars: attempt.content.length, head: attempt.content.slice(0, 200) });
       throw new HttpError(502, 'the model sent no reply');
     }
 
