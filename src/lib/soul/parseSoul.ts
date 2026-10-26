@@ -16,7 +16,8 @@ export type Soul = Record<SoulSlot, string> & { pools: Pools; changelog: string[
 
 const POOLS = new Set<SoulSlot>(['samples', 'stretch', 'punct']);
 
-export function parseSoul(markdown: string): Soul {
+/** Each slot's raw body as written, keyed by slot, for whichever slots the markdown carries. */
+export function soulBodies(markdown: string): Partial<Record<SoulSlot, string>> {
   const text = markdown.replace(/\r\n/g, '\n').trim();
   // A slot ends only where the next slot begins. The persona's own headings (`## Who you are`, the
   // opening line a host app requires) are content, whether the composer fenced the slot or not, and
@@ -25,15 +26,25 @@ export function parseSoul(markdown: string): Soul {
     .map(match => ({ match, name: slotName(match[1] ?? match[2] ?? '') }))
     .filter(({ name }) => name === 'Changelog' || SOUL_SLOTS.includes(name as SoulSlot));
   const body: Record<string, string> = {};
-
   for (let i = 0; i < headings.length; i++) {
     const { match, name } = headings[i];
     if (name === 'Changelog') continue;
     const from = (match.index ?? 0) + match[0].length;
     const to = headings[i + 1]?.match.index ?? text.length;
     // The first heading for a slot wins; a stray repeat later in the text does not replace it.
-    if (!body[name]) body[name] = text.slice(from, to).trim();
+    if (!body[name]) body[name] = text.slice(from, to).replace(/\n-{3,}\s*$/, '').trim();
   }
+  return body as Partial<Record<SoulSlot, string>>;
+}
+
+/** The changelog lines of a SOUL.md, if it has one. */
+export function soulChangelog(markdown: string): string[] {
+  return changelog(markdown.replace(/\r\n/g, '\n').trim());
+}
+
+export function parseSoul(markdown: string): Soul {
+  const text = markdown.replace(/\r\n/g, '\n').trim();
+  const body = soulBodies(text) as Record<string, string>;
 
   const missing = SOUL_SLOTS.filter(slot => !body[slot]);
   if (missing.length) throw new Error(`SOUL.md is missing: ${missing.join(', ')}`);

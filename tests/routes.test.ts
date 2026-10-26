@@ -419,7 +419,8 @@ describe('phase 1-merge route', () => {
 describe('compose route repair', () => {
   it('asks again with the reason when the soul will not parse, instead of failing the build', async () => {
     let calls = 0;
-    globalThis.fetch = (async () => {
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      if (String(input).includes('/models')) return new Response(JSON.stringify({ data: [] }), { status: 200 });
       calls += 1;
       const content = calls === 1 ? 'Here is the soul, prose only.' : soul;
       return new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] }), {
@@ -429,7 +430,8 @@ describe('compose route repair', () => {
     }) as typeof fetch;
     const response = await composePost(request('/api/compose', { report, answers: {}, n: 1 }));
     expect(response.status).toBe(200);
-    expect(calls).toBe(2);
+    // Four parts, then only the persona part again.
+    expect(calls).toBe(5);
     const data = (await response.json()) as { files: Array<{ path: string }> };
     expect(data.files.length).toBeGreaterThan(0);
   });
@@ -447,7 +449,7 @@ describe('compose route repair', () => {
     }) as typeof fetch;
     const response = await composePost(request('/api/compose', { report, answers: {}, n: 1 }));
     expect(response.status).toBe(200);
-    expect(calls).toBe(1);
+    expect(calls).toBe(4);
     const data = (await response.json()) as { markdown: string; issues: unknown[] };
     expect(data.issues).toEqual([]);
     expect(data.markdown).toContain('twenty one');
@@ -467,7 +469,8 @@ describe('compose route repair', () => {
     }) as typeof fetch;
     const response = await composePost(request('/api/compose', { report, answers: {}, n: 1 }));
     expect(response.status).toBe(200);
-    expect(calls).toBe(4);
+    // Four parts, then three repair rounds of the persona part alone.
+    expect(calls).toBe(7);
     const data = (await response.json()) as { issues: Array<{ rule: string }>; files: unknown[] };
     expect(data.issues.some(issue => issue.rule === 'no-placeholder')).toBe(true);
     expect(data.files.length).toBeGreaterThan(0);
@@ -479,7 +482,7 @@ describe('compose route repair', () => {
     globalThis.fetch = (async (input: string | URL | Request) => {
       if (String(input).includes('/models')) return new Response(JSON.stringify({ data: [] }), { status: 200 });
       calls += 1;
-      if (calls > 1) return new Response(JSON.stringify({ error: { message: 'upstream down' } }), { status: 503 });
+      if (calls > 4) return new Response(JSON.stringify({ error: { message: 'upstream down' } }), { status: 503 });
       return new Response(JSON.stringify({ choices: [{ message: { content: flawed }, finish_reason: 'stop' }] }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -501,7 +504,7 @@ describe('compose route transform', () => {
       if (String(input).includes('/models')) return new Response(JSON.stringify({ data: [] }), { status: 200 });
       const sent = JSON.parse(String(init?.body)) as { messages: Array<{ content: string }> };
       systems.push(sent.messages[0].content);
-      const content = systems.length === 1 ? copied : '```text\n' + fresh + '\n```';
+      const content = sent.messages[0].content.includes('transform one slot') ? '```text\n' + fresh + '\n```' : copied;
       return new Response(JSON.stringify({ choices: [{ message: { content }, finish_reason: 'stop' }] }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -509,9 +512,31 @@ describe('compose route transform', () => {
     }) as typeof fetch;
     const response = await composePost(request('/api/compose', { report, answers: {}, n: 1 }));
     expect(response.status).toBe(200);
-    expect(systems[1]).toContain('transform one slot');
+    expect(systems.filter(system => system.includes('transform one slot'))).toHaveLength(1);
     const data = (await response.json()) as { markdown: string; issues: Array<{ rule: string }> };
     expect(data.issues.some(issue => issue.rule === 'copied-from-iris')).toBe(false);
     expect(data.markdown).toContain('quick lowercase bursts');
+  });
+});
+
+describe('compose route parts', () => {
+  it('writes the soul in parts, persona first, each asking only for its own slots', async () => {
+    const users: string[] = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes('/models')) return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      const sent = JSON.parse(String(init?.body)) as { max_tokens: number; messages: Array<{ content: string }> };
+      users.push(sent.messages[1].content);
+      return new Response(JSON.stringify({ choices: [{ message: { content: soul }, finish_reason: 'stop' }] }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as typeof fetch;
+    const response = await composePost(request('/api/compose', { report, answers: {}, n: 1 }));
+    expect(response.status).toBe(200);
+    expect(users).toHaveLength(4);
+    expect(users[0]).toMatch(/^Write only these slots, in this order: `iris\.persona`\./);
+    expect(users[0]).not.toContain('### web.how');
+    expect(users.slice(1).every(user => user.includes('## The person, already written in iris.persona'))).toBe(true);
+    expect(users.find(user => user.includes('`web.persona`'))).toContain('### web.how');
   });
 });

@@ -60,7 +60,9 @@ export function estimateRun(chats: Message[][], mode: Phase1Mode = 'one-shot'): 
   strong.output += OUT.report;
   strong.input += PROMPT.phase3a + OUT.report;
   strong.output += OUT.questions;
-  strong.input += PROMPT.phase3b + OUT.report + OUT.questions + BASE_SLOTS;
+  // Four part calls each carry the prompt and report; Iris's slots are split between them, and the
+  // three after the persona also carry the persona as written (about half the soul).
+  strong.input += 4 * (PROMPT.phase3b + OUT.report + OUT.questions) + BASE_SLOTS + 3 * (OUT.soul / 2);
   strong.output += OUT.soul;
 
   return { bulk, strong };

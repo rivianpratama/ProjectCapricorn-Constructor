@@ -90,6 +90,6 @@ Each slot matches the length of its Iris counterpart, given beside it in the mes
 
 ## Output
 
-`SOUL.md` only. One H2 per slot, in this order: `iris.persona`, `iris.how`, `iris.language`, `iris.banter`, `web.persona`, `web.how`, `samples`, `stretch`, `punct`.
+The soul is written in parts. Answer with only the slots the message asks for, one H2 per slot (`## iris.persona` and so on), in the order it gives. Iris's text is given only for the slots you are writing, and once the persona exists it is given too, so every part is the same person.
 
-Prose slots go in a fenced `text` block. Pools go in a fenced `json` block: `samples` is an array of arrays of strings, and `stretch` and `punct` are arrays of strings. No commentary before, between or after the slots. At the end, after a line `---`, add `## Changelog` with at most eight short lines on who this person is.
+Prose slots go in a fenced `text` block. Pools go in a fenced `json` block: `samples` is an array of arrays of strings, and `stretch` and `punct` are arrays of strings. No commentary before, between or after the slots. When the message asks for it, end with a line `---` and `## Changelog` with at most eight short lines on who this person is.
