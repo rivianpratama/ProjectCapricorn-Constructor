@@ -120,6 +120,12 @@ function sentences(text: string): string[] {
     .filter(sentence => sentence.length > 25);
 }
 
+/** The slot's sentences that are Iris's word for word, longest first, so a repair turn knows what to rewrite. */
+export function copiedSentences(text: string, base: string): string[] {
+  const theirs = new Set(sentences(base));
+  return sentences(text).filter(sentence => theirs.has(sentence)).sort((a, b) => b.length - a.length);
+}
+
 /** Share of a slot's sentence text that is copied word for word from Iris's version of the slot. */
 export function copiedShare(text: string, base: string): number {
   const theirs = new Set(sentences(base));
@@ -143,7 +149,7 @@ export function lintOriginality(soul: Record<string, string>, base: Record<strin
       issues.push({
         slot,
         rule: 'copied-from-iris',
-        detail: `${Math.round(share * 100)} percent of its sentences are Iris's word for word, keep it under ${Math.round(limit * 100)} and write the rest as the child`,
+        detail: `${Math.round(share * 100)} percent of its sentences are Iris's word for word, keep it under ${Math.round(limit * 100)} and write the rest as the child. Rewrite these first, ${copiedSentences(soul[slot], base[slot]).slice(0, 6).map(line => `"${line}"`).join(', ')}`,
       });
     }
   }

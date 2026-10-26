@@ -32,6 +32,8 @@ describe('originality', async () => {
     expect(rules).toContain('iris.persona copied-from-iris');
     expect(rules).toContain('iris.persona iris-residue');
     expect(rules).toContain('web.how copied-from-iris');
+    const web = lintOriginality(lazy, base).find(issue => issue.slot === 'web.persona')!;
+    expect(web.detail).toContain('Rewrite these first, "');
   });
 
   it('lets a residue term through when the report gives it to the child', () => {
